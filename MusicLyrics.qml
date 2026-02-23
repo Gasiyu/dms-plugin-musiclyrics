@@ -708,9 +708,11 @@ PluginComponent {
     // Bar Pills: show current lyric line
     // -------------------------------------------------------------------------
 
-    horizontalBarPill: Component {
+    horizontalBarPill: root.activePlayer ? hPillComponent : null
+
+    Component {
+        id: hPillComponent
         Row {
-            visible: !!root.activePlayer
             spacing: Theme.spacingS
 
             Rectangle {
@@ -756,7 +758,10 @@ PluginComponent {
         }
     }
 
-    verticalBarPill: Component {
+    verticalBarPill: root.activePlayer ? vPillComponent : null
+
+    Component {
+        id: vPillComponent
         Column {
             spacing: Theme.spacingXS
 
