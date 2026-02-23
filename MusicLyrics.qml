@@ -62,6 +62,7 @@ PluginComponent {
         readonly property int navidrome: 1
         readonly property int lrclib: 2
         readonly property int cache: 3
+        readonly property int musixmatch: 4
     }
 
     // -------------------------------------------------------------------------
@@ -78,6 +79,7 @@ PluginComponent {
     // Chip status properties
     property int navidromeStatus: status.none
     property int lrclibStatus: status.none
+    property int musixmatchStatus: status.none
     property int cacheStatus: status.none
 
     // Fetch state and source
@@ -127,13 +129,20 @@ PluginComponent {
         currentLineIndex = -1;
         navidromeStatus = status.none;
         lrclibStatus = status.none;
+        musixmatchStatus = status.none;
         cacheStatus = status.none;
         lyricStatus = lyricState.loading;
         lyricSource = lyricSrc.none;
     }
 
-    // Sets the "no synced lyrics" state, used by lrclib handlers
-    function _setLyricsNotFound(lrclibStatusVal) {
+    // Sets the "no synced lyrics" state, used by musixmatch handlers
+    function _setMusixmatchNotFound(musixmatchStatusVal) {
+        musixmatchStatus = musixmatchStatusVal;
+        _fetchFromLrclib(_lastFetchedTrack, _lastFetchedArtist);
+    }
+
+    // Sets the final "no synced lyrics" state after all sources exhausted
+    function _setFinalNotFound(lrclibStatusVal) {
         lrclibStatus = lrclibStatusVal;
         lyricStatus = lyricState.notFound;
     }
@@ -287,7 +296,7 @@ PluginComponent {
             } else {
                 navidromeStatus = status.skippedConfig;
                 console.info("[MusicLyrics] Navidrome: skipped (not configured)");
-                _fetchFromLrclib(capturedTitle, capturedArtist);
+                _fetchFromMusixmatch(capturedTitle, capturedArtist);
             }
         }
 
@@ -303,6 +312,7 @@ PluginComponent {
                     root.cacheStatus = status.cacheHit;
                     root.navidromeStatus = status.skippedFound;
                     root.lrclibStatus = status.skippedFound;
+                    root.musixmatchStatus = status.skippedFound;
                     console.info("[MusicLyrics] ✓ Cache: lyrics loaded for \"" + capturedTitle + "\" (" + cached.lines.length + " lines)");
                     return;
                 }
@@ -411,7 +421,7 @@ PluginComponent {
             if (rawData.length === 0) {
                 root.navidromeStatus = status.error;
                 console.warn("[MusicLyrics] Navidrome: empty search response (HTTP " + httpStatus + ")");
-                root._fetchFromLrclib(expectedTitle, expectedArtist);
+                root._fetchFromMusixmatch(expectedTitle, expectedArtist);
                 return;
             }
             try {
@@ -420,7 +430,7 @@ PluginComponent {
                 if (!songs || songs.length === 0) {
                     root.navidromeStatus = status.notFound;
                     console.info("[MusicLyrics] ✗ Navidrome: no matching songs found for \"" + expectedTitle + "\"");
-                    root._fetchFromLrclib(expectedTitle, expectedArtist);
+                    root._fetchFromMusixmatch(expectedTitle, expectedArtist);
                     return;
                 }
 
@@ -439,12 +449,12 @@ PluginComponent {
                 root.navidromeStatus = status.error;
                 console.warn("[MusicLyrics] Navidrome: failed to parse search response — " + e);
                 console.warn("[MusicLyrics] Navidrome: raw data: " + rawData.substring(0, 200));
-                root._fetchFromLrclib(expectedTitle, expectedArtist);
+                root._fetchFromMusixmatch(expectedTitle, expectedArtist);
             }
         }, function (errMsg) {
             root.navidromeStatus = status.error;
             console.warn("[MusicLyrics] Navidrome: search request failed — " + errMsg);
-            root._fetchFromLrclib(expectedTitle, expectedArtist);
+            root._fetchFromMusixmatch(expectedTitle, expectedArtist);
         });
     }
 
@@ -458,7 +468,7 @@ PluginComponent {
             if (rawData.length === 0) {
                 root.navidromeStatus = status.error;
                 console.warn("[MusicLyrics] Navidrome: empty lyrics response (HTTP " + httpStatus + ")");
-                root._fetchFromLrclib(expectedTitle, expectedArtist);
+                root._fetchFromMusixmatch(expectedTitle, expectedArtist);
                 return;
             }
             try {
@@ -467,7 +477,7 @@ PluginComponent {
                 if (!lyricsList || lyricsList.length === 0) {
                     root.navidromeStatus = status.notFound;
                     console.info("[MusicLyrics] ✗ Navidrome: no lyrics available for \"" + expectedTitle + "\"");
-                    root._fetchFromLrclib(expectedTitle, expectedArtist);
+                    root._fetchFromMusixmatch(expectedTitle, expectedArtist);
                     return;
                 }
 
@@ -494,28 +504,29 @@ PluginComponent {
                     root.lyricStatus = lyricState.synced;
                     root.lyricSource = lyricSrc.navidrome;
                     root.lrclibStatus = status.skippedFound;
+                    root.musixmatchStatus = status.skippedFound;
                     console.info("[MusicLyrics] ✓ Navidrome: synced lyrics found (" + lines.length + " lines) for \"" + expectedTitle + "\"");
                     if (root.cachingEnabled)
                         root.writeToCache(expectedTitle, expectedArtist, lines, lyricSrc.navidrome);
                 } else if (unsynced && unsynced.line) {
                     root.navidromeStatus = status.skippedPlain;
                     console.info("[MusicLyrics] ✗ Navidrome: only plain lyrics found for \"" + expectedTitle + "\" (skipping, synced only)");
-                    root._fetchFromLrclib(expectedTitle, expectedArtist);
+                    root._fetchFromMusixmatch(expectedTitle, expectedArtist);
                 } else {
                     root.navidromeStatus = status.notFound;
                     console.info("[MusicLyrics] ✗ Navidrome: lyrics structure empty for \"" + expectedTitle + "\"");
-                    root._fetchFromLrclib(expectedTitle, expectedArtist);
+                    root._fetchFromMusixmatch(expectedTitle, expectedArtist);
                 }
             } catch (e) {
                 root.navidromeStatus = status.error;
                 console.warn("[MusicLyrics] Navidrome: failed to parse lyrics response — " + e);
                 console.warn("[MusicLyrics] Navidrome: raw data: " + rawData.substring(0, 200));
-                root._fetchFromLrclib(expectedTitle, expectedArtist);
+                root._fetchFromMusixmatch(expectedTitle, expectedArtist);
             }
         }, function (errMsg) {
             root.navidromeStatus = status.error;
             console.warn("[MusicLyrics] Navidrome: lyrics request failed — " + errMsg);
-            root._fetchFromLrclib(expectedTitle, expectedArtist);
+            root._fetchFromMusixmatch(expectedTitle, expectedArtist);
         });
     }
 
@@ -543,14 +554,14 @@ PluginComponent {
             var rawData = (responseText || "").trim();
             console.log("[MusicLyrics] lrclib: response length = " + rawData.length);
             if (rawData.length === 0) {
-                root._setLyricsNotFound(status.error);
+                root._setFinalNotFound(status.error);
                 console.warn("[MusicLyrics] lrclib: empty response (HTTP " + httpStatus + ")");
                 return;
             }
             try {
                 var result = JSON.parse(rawData);
                 if (result.statusCode === 404 || result.error) {
-                    root._setLyricsNotFound(status.notFound);
+                    root._setFinalNotFound(status.notFound);
                     console.info("[MusicLyrics] ✗ lrclib: no lyrics found for \"" + expectedTitle + "\"");
                 } else if (result.syncedLyrics) {
                     root.lyricsLines = root.parseLrc(result.syncedLyrics);
@@ -561,20 +572,250 @@ PluginComponent {
                     if (root.cachingEnabled)
                         root.writeToCache(expectedTitle, expectedArtist, root.lyricsLines, lyricSrc.lrclib);
                 } else if (result.plainLyrics) {
-                    root._setLyricsNotFound(status.skippedPlain);
+                    root._setFinalNotFound(status.skippedPlain);
                     console.info("[MusicLyrics] ✗ lrclib: only plain lyrics found for \"" + expectedTitle + "\" (skipping, synced only)");
                 } else {
-                    root._setLyricsNotFound(status.notFound);
+                    root._setFinalNotFound(status.notFound);
                     console.info("[MusicLyrics] ✗ lrclib: response contained no lyrics for \"" + expectedTitle + "\"");
                 }
             } catch (e) {
-                root._setLyricsNotFound(status.error);
+                root._setFinalNotFound(status.error);
                 console.warn("[MusicLyrics] lrclib: failed to parse response — " + e);
                 console.warn("[MusicLyrics] lrclib: raw data: " + rawData.substring(0, 200));
             }
         }, function (errMsg) {
-            root._setLyricsNotFound(status.error);
+            root._setFinalNotFound(status.error);
             console.warn("[MusicLyrics] lrclib: request failed — " + errMsg);
+        });
+    }
+
+    // -------------------------------------------------------------------------
+    // MusixMatch fetch
+    // -------------------------------------------------------------------------
+
+    property string _musixmatchToken: ""
+
+    function _musixmatchHeaders() {
+        return {
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/139.0.0.0 Safari/537.36",
+            "Accept": "application/json",
+            "Accept-Language": "en-US,en;q=0.9",
+            "Origin": "https://www.musixmatch.com",
+            "Referer": "https://www.musixmatch.com/"
+        };
+    }
+
+    function _musixmatchXhrGet(url, timeoutMs, onSuccess, onError) {
+        var retriesLeft = 2;
+        var retryDelay = 3000;
+        var attempt = 0;
+        var cancelled = false;
+        var currentXhr = null;
+
+        function _attempt() {
+            attempt++;
+            currentXhr = new XMLHttpRequest();
+            var done = false;
+
+            xhrTimeoutTimer.stop();
+            xhrTimeoutTimer.interval = timeoutMs;
+            xhrTimeoutTimer.onTimeout = function () {
+                if (!done && !cancelled) {
+                    done = true;
+                    currentXhr.abort();
+                    _retry("timeout");
+                }
+            };
+            xhrTimeoutTimer.start();
+
+            currentXhr.onreadystatechange = function () {
+                if (currentXhr.readyState !== XMLHttpRequest.DONE || done || cancelled)
+                    return;
+                done = true;
+                xhrTimeoutTimer.stop();
+                if (currentXhr.status === 0) {
+                    _retry("network error (status 0)");
+                    return;
+                }
+                onSuccess(currentXhr.responseText, currentXhr.status);
+            };
+            currentXhr.open("GET", url);
+            var headers = _musixmatchHeaders();
+            for (var key in headers)
+                currentXhr.setRequestHeader(key, headers[key]);
+            currentXhr.send();
+        }
+
+        function _retry(errMsg) {
+            if (cancelled)
+                return;
+            if (retriesLeft > 0) {
+                retriesLeft--;
+                console.warn("[MusicLyrics] _musixmatchXhrGet: " + errMsg + " — retrying (attempt " + (attempt + 1) + ", " + retriesLeft + " left): " + url);
+                xhrRetryTimer.stop();
+                xhrRetryTimer.interval = retryDelay;
+                xhrRetryTimer.onRetry = _attempt;
+                xhrRetryTimer.start();
+            } else {
+                onError(errMsg);
+            }
+        }
+
+        _attempt();
+
+        return function cancel() {
+            cancelled = true;
+            xhrTimeoutTimer.stop();
+            xhrRetryTimer.stop();
+            if (currentXhr)
+                currentXhr.abort();
+            console.info("[MusicLyrics] ⊘ MusixMatch XHR cancelled: " + url);
+        };
+    }
+
+    function _fetchMusixmatchToken(callback) {
+        if (_musixmatchToken) {
+            callback(_musixmatchToken);
+            return;
+        }
+
+        var url = "https://apic-desktop.musixmatch.com/ws/1.1/token.get"
+            + "?user_language=en"
+            + "&app_id=web-desktop-app-v1.0"
+            + "&t=" + Date.now();
+
+        console.info("[MusicLyrics] MusixMatch: fetching token…");
+
+        _musixmatchXhrGet(url, 15000, function (responseText, httpStatus) {
+            try {
+                var result = JSON.parse(responseText);
+                var token = result.message.body.user_token;
+                if (token && token !== "undefined" && token !== "") {
+                    root._musixmatchToken = token;
+                    console.info("[MusicLyrics] MusixMatch: token acquired");
+                    callback(token);
+                } else {
+                    console.warn("[MusicLyrics] MusixMatch: empty token in response");
+                    callback(null);
+                }
+            } catch (e) {
+                console.warn("[MusicLyrics] MusixMatch: failed to parse token response — " + e);
+                callback(null);
+            }
+        }, function (errMsg) {
+            console.warn("[MusicLyrics] MusixMatch: token request failed — " + errMsg);
+            callback(null);
+        });
+    }
+
+    function _fetchFromMusixmatch(expectedTitle, expectedArtist) {
+        if (lyricStatus === lyricState.synced) {
+            musixmatchStatus = status.skippedFound;
+            console.info("[MusicLyrics] MusixMatch: skipped (synced lyrics already found)");
+            return;
+        }
+
+        musixmatchStatus = status.searching;
+        console.info("[MusicLyrics] MusixMatch: searching for \"" + expectedTitle + "\" by " + expectedArtist);
+
+        _fetchMusixmatchToken(function (token) {
+            if (!token) {
+                root._setMusixmatchNotFound(status.error);
+                console.warn("[MusicLyrics] MusixMatch: no token available, cannot search");
+                return;
+            }
+
+            // Guard: track may have changed
+            if (expectedTitle !== root._lastFetchedTrack || expectedArtist !== root._lastFetchedArtist)
+                return;
+
+            var trackUrl = "https://apic-desktop.musixmatch.com/ws/1.1/matcher.track.get"
+                + "?q_track=" + encodeURIComponent(expectedTitle)
+                + "&q_artist=" + encodeURIComponent(expectedArtist)
+                + "&page_size=1&page=1"
+                + "&app_id=web-desktop-app-v1.0"
+                + "&usertoken=" + encodeURIComponent(token)
+                + "&t=" + Date.now();
+
+            root._cancelActiveFetch = root._musixmatchXhrGet(trackUrl, 15000, function (responseText, httpStatus) {
+                try {
+                    var result = JSON.parse(responseText);
+                    var track = result.message.body.track;
+                    var trackId = track.track_id;
+                    if (!trackId) {
+                        root._setMusixmatchNotFound(status.notFound);
+                        console.info("[MusicLyrics] ✗ MusixMatch: no track found for \"" + expectedTitle + "\"");
+                        return;
+                    }
+
+                    var hasSubtitles = track.has_subtitles === 1;
+                    var hasLyrics = track.has_lyrics === 1;
+                    console.info("[MusicLyrics] MusixMatch: track matched (id: " + trackId
+                        + ", has_subtitles: " + hasSubtitles + ", has_lyrics: " + hasLyrics + ")");
+
+                    if (!hasSubtitles) {
+                        root._setMusixmatchNotFound(hasLyrics ? status.skippedPlain : status.notFound);
+                        console.info("[MusicLyrics] ✗ MusixMatch: track has no synced lyrics (has_subtitles=0) for \"" + expectedTitle + "\"");
+                        return;
+                    }
+
+                    console.info("[MusicLyrics] MusixMatch: fetching synced lyrics…");
+                    root._fetchMusixmatchLyrics(trackId, token, expectedTitle, expectedArtist);
+                } catch (e) {
+                    root._setMusixmatchNotFound(status.error);
+                    console.warn("[MusicLyrics] MusixMatch: failed to parse track response — " + e);
+                }
+            }, function (errMsg) {
+                root._setMusixmatchNotFound(status.error);
+                console.warn("[MusicLyrics] MusixMatch: track request failed — " + errMsg);
+            });
+        });
+    }
+
+    function _fetchMusixmatchLyrics(trackId, token, expectedTitle, expectedArtist) {
+        var url = "https://apic-desktop.musixmatch.com/ws/1.1/track.subtitle.get"
+            + "?track_id=" + trackId
+            + "&subtitle_format=lrc"
+            + "&app_id=web-desktop-app-v1.0"
+            + "&usertoken=" + encodeURIComponent(token)
+            + "&t=" + Date.now();
+
+        root._cancelActiveFetch = _musixmatchXhrGet(url, 15000, function (responseText, httpStatus) {
+            // Guard: track may have changed
+            if (expectedTitle !== root._lastFetchedTrack || expectedArtist !== root._lastFetchedArtist)
+                return;
+
+            try {
+                var result = JSON.parse(responseText);
+                var subtitleBody = result.message.body.subtitle.subtitle_body;
+                if (!subtitleBody || subtitleBody.trim() === "") {
+                    root._setMusixmatchNotFound(status.notFound);
+                    console.info("[MusicLyrics] ✗ MusixMatch: no synced lyrics for \"" + expectedTitle + "\"");
+                    return;
+                }
+
+                var lines = root.parseLrc(subtitleBody);
+                if (lines.length === 0) {
+                    root._setMusixmatchNotFound(status.notFound);
+                    console.info("[MusicLyrics] ✗ MusixMatch: failed to parse LRC for \"" + expectedTitle + "\"");
+                    return;
+                }
+
+                root.lyricsLines = lines;
+                root.musixmatchStatus = status.found;
+                root.lrclibStatus = status.skippedFound;
+                root.lyricStatus = lyricState.synced;
+                root.lyricSource = lyricSrc.musixmatch;
+                console.info("[MusicLyrics] ✓ MusixMatch: synced lyrics found (" + lines.length + " lines) for \"" + expectedTitle + "\"");
+                if (root.cachingEnabled)
+                    root.writeToCache(expectedTitle, expectedArtist, lines, lyricSrc.musixmatch);
+            } catch (e) {
+                root._setMusixmatchNotFound(status.error);
+                console.warn("[MusicLyrics] MusixMatch: failed to parse lyrics response — " + e);
+            }
+        }, function (errMsg) {
+            root._setMusixmatchNotFound(status.error);
+            console.warn("[MusicLyrics] MusixMatch: lyrics request failed — " + errMsg);
         });
     }
 
@@ -735,7 +976,7 @@ PluginComponent {
                     }
 
                     StyledText {
-                        text: root.lyricSource === lyricSrc.navidrome ? "Navidrome" : root.lyricSource === lyricSrc.lrclib ? "lrclib" : ""
+                        text: root.lyricSource === lyricSrc.navidrome ? "Navidrome" : root.lyricSource === lyricSrc.lrclib ? "lrclib" : root.lyricSource === lyricSrc.musixmatch ? "MusixMatch" : ""
                         font.pixelSize: Theme.fontSizeSmall
                         color: Theme.background
                         anchors.verticalCenter: parent.verticalCenter
@@ -825,6 +1066,10 @@ PluginComponent {
                         StatusChipRow {
                             label: "Navidrome"
                             status: root.navidromeStatus
+                        }
+                        StatusChipRow {
+                            label: "MusixMatch"
+                            status: root.musixmatchStatus
                         }
                         StatusChipRow {
                             label: "lrclib"
