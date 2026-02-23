@@ -651,7 +651,7 @@ PluginComponent {
         }, _musixmatchHeaders());
     }
 
-    function _fetchFromMusixmatch(expectedTitle, expectedArtist) {
+    function _fetchFromMusixmatch(expectedTitle, expectedArtist, _tokenRetried) {
         if (lyricStatus === lyricState.synced) {
             musixmatchStatus = status.skippedFound;
             console.info("[MusicLyrics] MusixMatch: skipped (synced lyrics already found)");
@@ -683,6 +683,19 @@ PluginComponent {
             root._cancelActiveFetch = root._xhrGet(trackUrl, 15000, function (responseText, httpStatus) {
                 try {
                     var result = JSON.parse(responseText);
+                    var headerStatusCode = result.message && result.message.header ? result.message.header.status_code : 0;
+                    if (headerStatusCode === 401 || headerStatusCode === 402) {
+                        console.warn("[MusicLyrics] MusixMatch: auth error (status_code=" + headerStatusCode + ") in matcher.track.get");
+                        if (!_tokenRetried) {
+                            root._musixmatchToken = "";
+                            console.info("[MusicLyrics] MusixMatch: token cleared, retrying with fresh token…");
+                            root._fetchFromMusixmatch(expectedTitle, expectedArtist, true);
+                        } else {
+                            root._setMusixmatchNotFound(status.error);
+                            console.warn("[MusicLyrics] MusixMatch: auth error persists after token refresh");
+                        }
+                        return;
+                    }
                     var track = result.message.body.track;
                     var trackId = track.track_id;
                     if (!trackId) {
@@ -715,7 +728,7 @@ PluginComponent {
         });
     }
 
-    function _fetchMusixmatchLyrics(trackId, token, expectedTitle, expectedArtist) {
+    function _fetchMusixmatchLyrics(trackId, token, expectedTitle, expectedArtist, _tokenRetried) {
         var url = "https://apic-desktop.musixmatch.com/ws/1.1/track.subtitle.get"
             + "?track_id=" + trackId
             + "&subtitle_format=lrc"
@@ -730,6 +743,19 @@ PluginComponent {
 
             try {
                 var result = JSON.parse(responseText);
+                var headerStatusCode = result.message && result.message.header ? result.message.header.status_code : 0;
+                if (headerStatusCode === 401 || headerStatusCode === 402) {
+                    console.warn("[MusicLyrics] MusixMatch: auth error (status_code=" + headerStatusCode + ") in track.subtitle.get");
+                    if (!_tokenRetried) {
+                        root._musixmatchToken = "";
+                        console.info("[MusicLyrics] MusixMatch: token cleared, retrying with fresh token…");
+                        root._fetchFromMusixmatch(expectedTitle, expectedArtist, true);
+                    } else {
+                        root._setMusixmatchNotFound(status.error);
+                        console.warn("[MusicLyrics] MusixMatch: auth error persists after token refresh");
+                    }
+                    return;
+                }
                 var subtitleBody = result.message.body.subtitle.subtitle_body;
                 if (!subtitleBody || subtitleBody.trim() === "") {
                     root._setMusixmatchNotFound(status.notFound);
