@@ -145,6 +145,7 @@ PluginComponent {
     function _setFinalNotFound(lrclibStatusVal) {
         lrclibStatus = lrclibStatusVal;
         lyricStatus = lyricState.notFound;
+        root._cancelActiveFetch = null;
     }
 
     // -------------------------------------------------------------------------
@@ -630,10 +631,11 @@ PluginComponent {
 
         console.info("[MusicLyrics] Musixmatch: fetching token…");
 
-        _xhrGet(url, 15000, function (responseText, httpStatus) {
+        root._cancelActiveFetch = _xhrGet(url, 15000, function (responseText, httpStatus) {
             try {
                 var result = JSON.parse(responseText);
-                var token = result.message.body.user_token;
+                var body = result.message ? result.message.body : undefined;
+                var token = body ? body.user_token : undefined;
                 if (token && token !== "undefined" && token !== "") {
                     root._musixmatchToken = token;
                     console.info("[MusicLyrics] Musixmatch: token acquired");
