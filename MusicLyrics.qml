@@ -606,7 +606,7 @@ PluginComponent {
     // Musixmatch fetch
     // -------------------------------------------------------------------------
 
-    property string _musixmatchToken: ""
+    property string _musixmatchToken: pluginData.musixmatchToken ?? ""
 
     function _musixmatchHeaders() {
         return {
@@ -638,6 +638,7 @@ PluginComponent {
                 var token = body ? body.user_token : undefined;
                 if (token && token !== "undefined" && token !== "") {
                     root._musixmatchToken = token;
+                    pluginService.savePluginData("musicLyrics", "musixmatchToken", token)
                     console.info("[MusicLyrics] Musixmatch: token acquired");
                     callback(token);
                 } else {
