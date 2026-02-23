@@ -354,7 +354,7 @@ PluginComponent {
                 onSuccess(currentXhr.responseText, currentXhr.status);
             };
             currentXhr.open("GET", url);
-            currentXhr.setRequestHeader("User-Agent", "DankMaterialShell MusicLyrics/1.1.0 (https://github.com/Gasiyu/musiclyrics)");
+            currentXhr.setRequestHeader("User-Agent", "DankMaterialShell MusicLyrics/1.2.0 (https://github.com/Gasiyu/dms-musiclyrics)");
             currentXhr.setRequestHeader("Accept", "application/json");
             currentXhr.send();
         }
