@@ -361,6 +361,11 @@ PluginComponent {
                     _retry("network error (status 0)");
                     return;
                 }
+                var responseBody = (currentXhr.responseText || "").trim();
+                if (responseBody.length === 0) {
+                    _retry("empty response (HTTP " + currentXhr.status + ")");
+                    return;
+                }
                 onSuccess(currentXhr.responseText, currentXhr.status);
             };
             currentXhr.open("GET", url);
