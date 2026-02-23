@@ -329,7 +329,7 @@ PluginComponent {
     // XMLHttpRequest helper
     // -------------------------------------------------------------------------
 
-    function _xhrGet(url, timeoutMs, onSuccess, onError) {
+    function _xhrGet(url, timeoutMs, onSuccess, onError, customHeaders) {
         var retriesLeft = 2;
         var retryDelay = 3000;
         var attempt = 0;
@@ -364,8 +364,13 @@ PluginComponent {
                 onSuccess(currentXhr.responseText, currentXhr.status);
             };
             currentXhr.open("GET", url);
-            currentXhr.setRequestHeader("User-Agent", "DankMaterialShell MusicLyrics/1.2.0 (https://github.com/Gasiyu/dms-plugin-musiclyrics)");
-            currentXhr.setRequestHeader("Accept", "application/json");
+            if (customHeaders) {
+                for (var key in customHeaders)
+                    currentXhr.setRequestHeader(key, customHeaders[key]);
+            } else {
+                currentXhr.setRequestHeader("User-Agent", "DankMaterialShell MusicLyrics/1.2.0 (https://github.com/Gasiyu/dms-plugin-musiclyrics)");
+                currentXhr.setRequestHeader("Accept", "application/json");
+            }
             currentXhr.send();
         }
 
@@ -605,73 +610,6 @@ PluginComponent {
         };
     }
 
-    function _musixmatchXhrGet(url, timeoutMs, onSuccess, onError) {
-        var retriesLeft = 2;
-        var retryDelay = 3000;
-        var attempt = 0;
-        var cancelled = false;
-        var currentXhr = null;
-
-        function _attempt() {
-            attempt++;
-            currentXhr = new XMLHttpRequest();
-            var done = false;
-
-            xhrTimeoutTimer.stop();
-            xhrTimeoutTimer.interval = timeoutMs;
-            xhrTimeoutTimer.onTimeout = function () {
-                if (!done && !cancelled) {
-                    done = true;
-                    currentXhr.abort();
-                    _retry("timeout");
-                }
-            };
-            xhrTimeoutTimer.start();
-
-            currentXhr.onreadystatechange = function () {
-                if (currentXhr.readyState !== XMLHttpRequest.DONE || done || cancelled)
-                    return;
-                done = true;
-                xhrTimeoutTimer.stop();
-                if (currentXhr.status === 0) {
-                    _retry("network error (status 0)");
-                    return;
-                }
-                onSuccess(currentXhr.responseText, currentXhr.status);
-            };
-            currentXhr.open("GET", url);
-            var headers = _musixmatchHeaders();
-            for (var key in headers)
-                currentXhr.setRequestHeader(key, headers[key]);
-            currentXhr.send();
-        }
-
-        function _retry(errMsg) {
-            if (cancelled)
-                return;
-            if (retriesLeft > 0) {
-                retriesLeft--;
-                console.warn("[MusicLyrics] _musixmatchXhrGet: " + errMsg + " — retrying (attempt " + (attempt + 1) + ", " + retriesLeft + " left): " + url);
-                xhrRetryTimer.stop();
-                xhrRetryTimer.interval = retryDelay;
-                xhrRetryTimer.onRetry = _attempt;
-                xhrRetryTimer.start();
-            } else {
-                onError(errMsg);
-            }
-        }
-
-        _attempt();
-
-        return function cancel() {
-            cancelled = true;
-            xhrTimeoutTimer.stop();
-            xhrRetryTimer.stop();
-            if (currentXhr)
-                currentXhr.abort();
-            console.info("[MusicLyrics] ⊘ MusixMatch XHR cancelled: " + url);
-        };
-    }
 
     function _fetchMusixmatchToken(callback) {
         if (_musixmatchToken) {
@@ -686,7 +624,7 @@ PluginComponent {
 
         console.info("[MusicLyrics] MusixMatch: fetching token…");
 
-        _musixmatchXhrGet(url, 15000, function (responseText, httpStatus) {
+        _xhrGet(url, 15000, function (responseText, httpStatus) {
             try {
                 var result = JSON.parse(responseText);
                 var token = result.message.body.user_token;
@@ -705,7 +643,7 @@ PluginComponent {
         }, function (errMsg) {
             console.warn("[MusicLyrics] MusixMatch: token request failed — " + errMsg);
             callback(null);
-        });
+        }, _musixmatchHeaders());
     }
 
     function _fetchFromMusixmatch(expectedTitle, expectedArtist) {
@@ -737,7 +675,7 @@ PluginComponent {
                 + "&usertoken=" + encodeURIComponent(token)
                 + "&t=" + Date.now();
 
-            root._cancelActiveFetch = root._musixmatchXhrGet(trackUrl, 15000, function (responseText, httpStatus) {
+            root._cancelActiveFetch = root._xhrGet(trackUrl, 15000, function (responseText, httpStatus) {
                 try {
                     var result = JSON.parse(responseText);
                     var track = result.message.body.track;
@@ -768,7 +706,7 @@ PluginComponent {
             }, function (errMsg) {
                 root._setMusixmatchNotFound(status.error);
                 console.warn("[MusicLyrics] MusixMatch: track request failed — " + errMsg);
-            });
+            }, _musixmatchHeaders());
         });
     }
 
@@ -780,7 +718,7 @@ PluginComponent {
             + "&usertoken=" + encodeURIComponent(token)
             + "&t=" + Date.now();
 
-        root._cancelActiveFetch = _musixmatchXhrGet(url, 15000, function (responseText, httpStatus) {
+        root._cancelActiveFetch = _xhrGet(url, 15000, function (responseText, httpStatus) {
             // Guard: track may have changed
             if (expectedTitle !== root._lastFetchedTrack || expectedArtist !== root._lastFetchedArtist)
                 return;
@@ -816,7 +754,7 @@ PluginComponent {
         }, function (errMsg) {
             root._setMusixmatchNotFound(status.error);
             console.warn("[MusicLyrics] MusixMatch: lyrics request failed — " + errMsg);
-        });
+        }, _musixmatchHeaders());
     }
 
     // -------------------------------------------------------------------------
