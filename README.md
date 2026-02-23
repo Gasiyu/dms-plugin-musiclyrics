@@ -12,7 +12,7 @@ A DankMaterialShell widget plugin that displays synced music lyrics from multipl
 ## Installation
 1. Clone this repo directly to your DankMaterialShell plugins directory:
    ```bash
-   git clone https://github.com/Gasiyu/dms-musiclyrics ~/.config/DankMaterialShell/plugins/musiclyrics
+   git clone https://github.com/Gasiyu/dms-plugin-musiclyrics ~/.config/DankMaterialShell/plugins/musiclyrics
    ```
 2. Open DMS Settings → Plugins, click "Scan", and toggle "Music Lyrics" on.
 3. Add the plugin to your DankBar widget list.
