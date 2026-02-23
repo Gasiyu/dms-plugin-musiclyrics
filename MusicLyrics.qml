@@ -18,6 +18,13 @@ PluginComponent {
     property MprisPlayer activePlayer: MprisController.activePlayer
     property var allPlayers: MprisController.availablePlayers
 
+    onActivePlayerChanged: {
+        if (!activePlayer && allPlayers && allPlayers.length > 0) {
+            console.info("[MusicLyrics] Active player closed, falling back to " + (allPlayers[0].identity || "unknown player"));
+            MprisController.activePlayer = allPlayers[0];
+        }
+    }
+
     // -------------------------------------------------------------------------
     // Enum namespaces
     // -------------------------------------------------------------------------
