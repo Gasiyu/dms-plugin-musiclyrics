@@ -600,7 +600,7 @@ PluginComponent {
     }
 
     // -------------------------------------------------------------------------
-    // MusixMatch fetch
+    // Musixmatch fetch
     // -------------------------------------------------------------------------
 
     property string _musixmatchToken: ""
@@ -615,7 +615,6 @@ PluginComponent {
         };
     }
 
-
     function _fetchMusixmatchToken(callback) {
         if (_musixmatchToken) {
             callback(_musixmatchToken);
@@ -627,7 +626,7 @@ PluginComponent {
             + "&app_id=web-desktop-app-v1.0"
             + "&t=" + Date.now();
 
-        console.info("[MusicLyrics] MusixMatch: fetching token…");
+        console.info("[MusicLyrics] Musixmatch: fetching token…");
 
         _xhrGet(url, 15000, function (responseText, httpStatus) {
             try {
@@ -635,18 +634,18 @@ PluginComponent {
                 var token = result.message.body.user_token;
                 if (token && token !== "undefined" && token !== "") {
                     root._musixmatchToken = token;
-                    console.info("[MusicLyrics] MusixMatch: token acquired");
+                    console.info("[MusicLyrics] Musixmatch: token acquired");
                     callback(token);
                 } else {
-                    console.warn("[MusicLyrics] MusixMatch: empty token in response");
+                    console.warn("[MusicLyrics] Musixmatch: empty token in response");
                     callback(null);
                 }
             } catch (e) {
-                console.warn("[MusicLyrics] MusixMatch: failed to parse token response — " + e);
+                console.warn("[MusicLyrics] Musixmatch: failed to parse token response — " + e);
                 callback(null);
             }
         }, function (errMsg) {
-            console.warn("[MusicLyrics] MusixMatch: token request failed — " + errMsg);
+            console.warn("[MusicLyrics] Musixmatch: token request failed — " + errMsg);
             callback(null);
         }, _musixmatchHeaders());
     }
@@ -654,17 +653,17 @@ PluginComponent {
     function _fetchFromMusixmatch(expectedTitle, expectedArtist, _tokenRetried) {
         if (lyricStatus === lyricState.synced) {
             musixmatchStatus = status.skippedFound;
-            console.info("[MusicLyrics] MusixMatch: skipped (synced lyrics already found)");
+            console.info("[MusicLyrics] Musixmatch: skipped (synced lyrics already found)");
             return;
         }
 
         musixmatchStatus = status.searching;
-        console.info("[MusicLyrics] MusixMatch: searching for \"" + expectedTitle + "\" by " + expectedArtist);
+        console.info("[MusicLyrics] Musixmatch: searching for \"" + expectedTitle + "\" by " + expectedArtist);
 
         _fetchMusixmatchToken(function (token) {
             if (!token) {
                 root._setMusixmatchNotFound(status.error);
-                console.warn("[MusicLyrics] MusixMatch: no token available, cannot search");
+                console.warn("[MusicLyrics] Musixmatch: no token available, cannot search");
                 return;
             }
 
@@ -685,14 +684,14 @@ PluginComponent {
                     var result = JSON.parse(responseText);
                     var headerStatusCode = result.message && result.message.header ? result.message.header.status_code : 0;
                     if (headerStatusCode === 401 || headerStatusCode === 402) {
-                        console.warn("[MusicLyrics] MusixMatch: auth error (status_code=" + headerStatusCode + ") in matcher.track.get");
+                        console.warn("[MusicLyrics] Musixmatch: auth error (status_code=" + headerStatusCode + ") in matcher.track.get");
                         if (!_tokenRetried) {
                             root._musixmatchToken = "";
-                            console.info("[MusicLyrics] MusixMatch: token cleared, retrying with fresh token…");
+                            console.info("[MusicLyrics] Musixmatch: token cleared, retrying with fresh token…");
                             root._fetchFromMusixmatch(expectedTitle, expectedArtist, true);
                         } else {
                             root._setMusixmatchNotFound(status.error);
-                            console.warn("[MusicLyrics] MusixMatch: auth error persists after token refresh");
+                            console.warn("[MusicLyrics] Musixmatch: auth error persists after token refresh");
                         }
                         return;
                     }
@@ -700,30 +699,29 @@ PluginComponent {
                     var trackId = track.track_id;
                     if (!trackId) {
                         root._setMusixmatchNotFound(status.notFound);
-                        console.info("[MusicLyrics] ✗ MusixMatch: no track found for \"" + expectedTitle + "\"");
+                        console.info("[MusicLyrics] ✗ Musixmatch: no track found for \"" + expectedTitle + "\"");
                         return;
                     }
 
                     var hasSubtitles = track.has_subtitles === 1;
                     var hasLyrics = track.has_lyrics === 1;
-                    console.info("[MusicLyrics] MusixMatch: track matched (id: " + trackId
-                        + ", has_subtitles: " + hasSubtitles + ", has_lyrics: " + hasLyrics + ")");
+                    console.info("[MusicLyrics] Musixmatch: track matched (id: " + trackId + ", has_subtitles: " + hasSubtitles + ", has_lyrics: " + hasLyrics + ")");
 
                     if (!hasSubtitles) {
                         root._setMusixmatchNotFound(hasLyrics ? status.skippedPlain : status.notFound);
-                        console.info("[MusicLyrics] ✗ MusixMatch: track has no synced lyrics (has_subtitles=0) for \"" + expectedTitle + "\"");
+                        console.info("[MusicLyrics] ✗ Musixmatch: track has no synced lyrics (has_subtitles=0) for \"" + expectedTitle + "\"");
                         return;
                     }
 
-                    console.info("[MusicLyrics] MusixMatch: fetching synced lyrics…");
+                    console.info("[MusicLyrics] Musixmatch: fetching synced lyrics…");
                     root._fetchMusixmatchLyrics(trackId, token, expectedTitle, expectedArtist);
                 } catch (e) {
                     root._setMusixmatchNotFound(status.error);
-                    console.warn("[MusicLyrics] MusixMatch: failed to parse track response — " + e);
+                    console.warn("[MusicLyrics] Musixmatch: failed to parse track response — " + e);
                 }
             }, function (errMsg) {
                 root._setMusixmatchNotFound(status.error);
-                console.warn("[MusicLyrics] MusixMatch: track request failed — " + errMsg);
+                console.warn("[MusicLyrics] Musixmatch: track request failed — " + errMsg);
             }, _musixmatchHeaders());
         });
     }
@@ -745,28 +743,28 @@ PluginComponent {
                 var result = JSON.parse(responseText);
                 var headerStatusCode = result.message && result.message.header ? result.message.header.status_code : 0;
                 if (headerStatusCode === 401 || headerStatusCode === 402) {
-                    console.warn("[MusicLyrics] MusixMatch: auth error (status_code=" + headerStatusCode + ") in track.subtitle.get");
+                    console.warn("[MusicLyrics] Musixmatch: auth error (status_code=" + headerStatusCode + ") in track.subtitle.get");
                     if (!_tokenRetried) {
                         root._musixmatchToken = "";
-                        console.info("[MusicLyrics] MusixMatch: token cleared, retrying with fresh token…");
+                        console.info("[MusicLyrics] Musixmatch: token cleared, retrying with fresh token…");
                         root._fetchFromMusixmatch(expectedTitle, expectedArtist, true);
                     } else {
                         root._setMusixmatchNotFound(status.error);
-                        console.warn("[MusicLyrics] MusixMatch: auth error persists after token refresh");
+                        console.warn("[MusicLyrics] Musixmatch: auth error persists after token refresh");
                     }
                     return;
                 }
                 var subtitleBody = result.message.body.subtitle.subtitle_body;
                 if (!subtitleBody || subtitleBody.trim() === "") {
                     root._setMusixmatchNotFound(status.notFound);
-                    console.info("[MusicLyrics] ✗ MusixMatch: no synced lyrics for \"" + expectedTitle + "\"");
+                    console.info("[MusicLyrics] ✗ Musixmatch: no synced lyrics for \"" + expectedTitle + "\"");
                     return;
                 }
 
                 var lines = root.parseLrc(subtitleBody);
                 if (lines.length === 0) {
                     root._setMusixmatchNotFound(status.notFound);
-                    console.info("[MusicLyrics] ✗ MusixMatch: failed to parse LRC for \"" + expectedTitle + "\"");
+                    console.info("[MusicLyrics] ✗ Musixmatch: failed to parse LRC for \"" + expectedTitle + "\"");
                     return;
                 }
 
@@ -775,16 +773,16 @@ PluginComponent {
                 root.lrclibStatus = status.skippedFound;
                 root.lyricStatus = lyricState.synced;
                 root.lyricSource = lyricSrc.musixmatch;
-                console.info("[MusicLyrics] ✓ MusixMatch: synced lyrics found (" + lines.length + " lines) for \"" + expectedTitle + "\"");
+                console.info("[MusicLyrics] ✓ Musixmatch: synced lyrics found (" + lines.length + " lines) for \"" + expectedTitle + "\"");
                 if (root.cachingEnabled)
                     root.writeToCache(expectedTitle, expectedArtist, lines, lyricSrc.musixmatch);
             } catch (e) {
                 root._setMusixmatchNotFound(status.error);
-                console.warn("[MusicLyrics] MusixMatch: failed to parse lyrics response — " + e);
+                console.warn("[MusicLyrics] Musixmatch: failed to parse lyrics response — " + e);
             }
         }, function (errMsg) {
             root._setMusixmatchNotFound(status.error);
-            console.warn("[MusicLyrics] MusixMatch: lyrics request failed — " + errMsg);
+            console.warn("[MusicLyrics] Musixmatch: lyrics request failed — " + errMsg);
         }, _musixmatchHeaders());
     }
 
@@ -945,7 +943,7 @@ PluginComponent {
                     }
 
                     StyledText {
-                        text: root.lyricSource === lyricSrc.navidrome ? "Navidrome" : root.lyricSource === lyricSrc.lrclib ? "lrclib" : root.lyricSource === lyricSrc.musixmatch ? "MusixMatch" : ""
+                        text: root.lyricSource === lyricSrc.navidrome ? "Navidrome" : root.lyricSource === lyricSrc.lrclib ? "lrclib" : root.lyricSource === lyricSrc.musixmatch ? "Musixmatch" : ""
                         font.pixelSize: Theme.fontSizeSmall
                         color: Theme.background
                         anchors.verticalCenter: parent.verticalCenter
@@ -1037,7 +1035,7 @@ PluginComponent {
                             status: root.navidromeStatus
                         }
                         StatusChipRow {
-                            label: "MusixMatch"
+                            label: "Musixmatch"
                             status: root.musixmatchStatus
                         }
                         StatusChipRow {
