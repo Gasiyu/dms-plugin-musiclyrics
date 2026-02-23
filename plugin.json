@@ -1,5 +1,5 @@
 {
-  "id": "id.ngoding.musicLyrics",
+  "id": "musicLyrics",
   "name": "Music Lyrics",
   "description": "Display synced music lyrics from multiple sources",
   "version": "1.1.0",

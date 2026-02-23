@@ -6,7 +6,7 @@ import qs.Widgets
 
 PluginSettings {
     id: root
-    pluginId: "id.ngoding.musicLyrics"
+    pluginId: "musicLyrics"
 
     StyledText {
         width: parent.width
@@ -46,7 +46,7 @@ PluginSettings {
             ToggleSetting {
                 settingKey: "cachingEnabled"
                 label: "Local Cache"
-                description: "Save downloaded lyrics locally to speed up loading times and reduce network requests. Lyrics files will be stored under ~/.cache/id.ngoding.musicLyrics directories."
+                description: "Save downloaded lyrics locally to speed up loading times and reduce network requests. Lyrics files will be stored under ~/.cache/musicLyrics directories."
                 defaultValue: true
             }
         }

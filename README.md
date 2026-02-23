@@ -20,5 +20,5 @@ A DankMaterialShell widget plugin that displays synced music lyrics from multipl
 
 ## Configuration
 Access the plugin settings via DMS to configure:
-* **Local Cache:** Enabled by default. Saves downloaded lyrics to `~/.cache/id.ngoding.musicLyrics` to speed up loading and reduce network requests.
+* **Local Cache:** Enabled by default. Saves downloaded lyrics to `~/.cache/musicLyrics` to speed up loading and reduce network requests.
 * **Navidrome:** Enter your Server URL, Username, and Password to fetch lyrics from your own instance.
