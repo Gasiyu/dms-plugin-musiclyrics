@@ -516,6 +516,7 @@ PluginComponent {
                     root.lrclibStatus = status.skippedFound;
                     root.musixmatchStatus = status.skippedFound;
                     console.info("[MusicLyrics] ✓ Navidrome: synced lyrics found (" + lines.length + " lines) for \"" + expectedTitle + "\"");
+                    root._cancelActiveFetch = null;
                     if (root.cachingEnabled)
                         root.writeToCache(expectedTitle, expectedArtist, lines, lyricSrc.navidrome);
                 } else if (unsynced && unsynced.line) {
@@ -579,6 +580,7 @@ PluginComponent {
                     root.lyricStatus = lyricState.synced;
                     root.lyricSource = lyricSrc.lrclib;
                     console.info("[MusicLyrics] ✓ lrclib: synced lyrics found (" + root.lyricsLines.length + " lines) for \"" + expectedTitle + "\"");
+                    root._cancelActiveFetch = null;
                     if (root.cachingEnabled)
                         root.writeToCache(expectedTitle, expectedArtist, root.lyricsLines, lyricSrc.lrclib);
                 } else if (result.plainLyrics) {
@@ -774,6 +776,7 @@ PluginComponent {
                 root.lyricStatus = lyricState.synced;
                 root.lyricSource = lyricSrc.musixmatch;
                 console.info("[MusicLyrics] ✓ Musixmatch: synced lyrics found (" + lines.length + " lines) for \"" + expectedTitle + "\"");
+                root._cancelActiveFetch = null;
                 if (root.cachingEnabled)
                     root.writeToCache(expectedTitle, expectedArtist, lines, lyricSrc.musixmatch);
             } catch (e) {
