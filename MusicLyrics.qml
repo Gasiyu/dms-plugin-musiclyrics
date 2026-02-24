@@ -15,15 +15,8 @@ PluginComponent {
     property string navidromePassword: pluginData.navidromePassword ?? ""
     property bool cachingEnabled: pluginData.cachingEnabled ?? true
 
-    property MprisPlayer activePlayer: MprisController.activePlayer
+    readonly property MprisPlayer activePlayer: MprisController.activePlayer
     property var allPlayers: MprisController.availablePlayers
-
-    onActivePlayerChanged: {
-        if (!activePlayer && allPlayers && allPlayers.length > 0) {
-            console.info("[MusicLyrics] Active player closed, falling back to " + (allPlayers[0].identity || "unknown player"));
-            MprisController.activePlayer = allPlayers[0];
-        }
-    }
 
     // -------------------------------------------------------------------------
     // Enum namespaces
@@ -1050,114 +1043,6 @@ PluginComponent {
                         }
                     }
 
-                    // Divider
-                    Rectangle {
-                        width: parent.width
-                        height: 1
-                        color: Theme.withAlpha(Theme.outlineStrong, 0.3)
-                    }
-
-                    // --- Media Players Section ---
-                    Column {
-                        width: parent.width
-                        spacing: Theme.spacingS
-
-                        StyledText {
-                            text: "Media Players"
-                            font.pixelSize: Theme.fontSizeMedium
-                            font.weight: Font.DemiBold
-                            color: Theme.surfaceVariantText
-                        }
-
-                        StyledText {
-                            text: "No media players detected"
-                            font.pixelSize: Theme.fontSizeSmall
-                            color: Theme.surfaceVariantText
-                            visible: !root.allPlayers || root.allPlayers.length === 0
-                        }
-
-                        ListView {
-                            id: playerListView
-                            width: parent.width
-                            height: Math.min(contentHeight, 200)
-                            clip: true
-                            visible: root.allPlayers && root.allPlayers.length > 0
-                            model: root.allPlayers
-                            spacing: Theme.spacingXS
-
-                            delegate: Rectangle {
-                                id: playerDelegate
-                                required property var modelData
-                                width: playerListView.width
-                                height: playerRow.implicitHeight + Theme.spacingS * 2
-                                radius: Theme.cornerRadius
-                                color: modelData === root.activePlayer ? Theme.withAlpha(Theme.primary, 0.15) : playerMouse.containsMouse ? Theme.surfaceContainerHighest : Theme.surfaceContainerHigh
-
-                                Row {
-                                    id: playerRow
-                                    anchors {
-                                        left: parent.left
-                                        right: parent.right
-                                        verticalCenter: parent.verticalCenter
-                                        margins: Theme.spacingS
-                                    }
-                                    spacing: Theme.spacingS
-
-                                    DankIcon {
-                                        name: modelData.playbackState === MprisPlaybackState.Playing ? "play_circle" : "pause_circle"
-                                        size: Theme.iconSize
-                                        color: modelData === root.activePlayer ? Theme.primary : Theme.surfaceText
-                                        anchors.verticalCenter: parent.verticalCenter
-                                    }
-
-                                    Column {
-                                        spacing: 2
-                                        width: parent.width - Theme.iconSize - Theme.spacingS
-                                        anchors.verticalCenter: parent.verticalCenter
-
-                                        StyledText {
-                                            text: modelData.identity || "Unknown Player"
-                                            font.pixelSize: Theme.fontSizeSmall
-                                            font.weight: modelData === root.activePlayer ? Font.Bold : Font.Normal
-                                            color: modelData === root.activePlayer ? Theme.primary : Theme.surfaceText
-                                            width: parent.width
-                                            elide: Text.ElideRight
-                                            maximumLineCount: 1
-                                        }
-
-                                        StyledText {
-                                            text: {
-                                                var title = modelData.trackTitle || "";
-                                                var artist = modelData.trackArtist || "";
-                                                if (title && artist)
-                                                    return artist + " — " + title;
-                                                return title || "No track";
-                                            }
-                                            font.pixelSize: Theme.fontSizeSmall * 0.9
-                                            color: Theme.surfaceVariantText
-                                            width: parent.width
-                                            elide: Text.ElideRight
-                                            maximumLineCount: 1
-                                        }
-                                    }
-                                }
-
-                                MouseArea {
-                                    id: playerMouse
-                                    anchors.fill: parent
-                                    hoverEnabled: true
-                                    cursorShape: Qt.PointingHandCursor
-                                    onClicked: MprisController.activePlayer = playerDelegate.modelData
-                                }
-
-                                Behavior on color {
-                                    ColorAnimation {
-                                        duration: 150
-                                    }
-                                }
-                            }
-                        }
-                    }
                 }
             }
         }
