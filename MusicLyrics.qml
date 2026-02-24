@@ -367,7 +367,7 @@ PluginComponent {
                 for (var key in customHeaders)
                     currentXhr.setRequestHeader(key, customHeaders[key]);
             } else {
-                currentXhr.setRequestHeader("User-Agent", "DankMaterialShell MusicLyrics/1.2.0 (https://github.com/Gasiyu/dms-plugin-musiclyrics)");
+                currentXhr.setRequestHeader("User-Agent", "DankMaterialShell MusicLyrics/1.3.0 (https://github.com/Gasiyu/dms-plugin-musiclyrics)");
                 currentXhr.setRequestHeader("Accept", "application/json");
             }
             currentXhr.send();
