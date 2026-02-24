@@ -989,115 +989,315 @@ PluginComponent {
     }
 
     // -------------------------------------------------------------------------
-    // Popout: Status + Media Player Selector
+    // Popout: Now Playing + Lyrics Sources
     // -------------------------------------------------------------------------
+
+    function _formatDuration(seconds) {
+        if (seconds <= 0) return "—";
+        var m = Math.floor(seconds / 60);
+        var s = Math.floor(seconds % 60);
+        return m + ":" + ("0" + s).slice(-2);
+    }
 
     popoutContent: Component {
         PopoutComponent {
             headerText: "Music Lyrics"
-            detailsText: root.currentTitle ? (root.currentArtist + " — " + root.currentTitle) : "No track playing"
-            showCloseButton: true
 
             Item {
                 width: parent.width
-                height: 300
+                implicitHeight: popoutLayout.implicitHeight
 
                 Column {
-                    anchors.fill: parent
+                    id: popoutLayout
+                    width: parent.width
                     spacing: Theme.spacingM
 
-                    // Divider
+                    // ── Now Playing Card ──
                     Rectangle {
                         width: parent.width
-                        height: 1
-                        color: Theme.withAlpha(Theme.outlineStrong, 0.3)
+                        height: nowPlayingContent.implicitHeight + Theme.spacingM * 2
+                        radius: Theme.cornerRadius
+                        color: root.activePlayer
+                              ? Theme.withAlpha(Theme.primary, 0.08)
+                              : Theme.withAlpha(Theme.surfaceContainerHighest, 0.5)
+
+                        Column {
+                            id: nowPlayingContent
+                            anchors {
+                                left: parent.left; right: parent.right
+                                top: parent.top
+                                margins: Theme.spacingM
+                            }
+                            spacing: Theme.spacingS
+
+                            // Header row: icon + "Now Playing"
+                            Row {
+                                spacing: Theme.spacingS
+                                width: parent.width
+
+                                DankIcon {
+                                    name: root.activePlayer && root.activePlayer.playbackState === MprisPlaybackState.Playing
+                                          ? "play_circle" : "pause_circle"
+                                    size: 20
+                                    color: root.activePlayer ? Theme.primary : Theme.surfaceVariantText
+                                    anchors.verticalCenter: parent.verticalCenter
+                                }
+
+                                StyledText {
+                                    text: root.activePlayer ? "Now Playing - " + (root.activePlayer.identity || "Unknown Player") : "No Active Player"
+                                    font.pixelSize: Theme.fontSizeSmall
+                                    font.weight: Font.DemiBold
+                                    color: root.activePlayer ? Theme.primary : Theme.surfaceVariantText
+                                    anchors.verticalCenter: parent.verticalCenter
+                                }
+                            }
+
+                            // Song title
+                            StyledText {
+                                width: parent.width
+                                text: root.currentTitle || "—"
+                                font.pixelSize: Theme.fontSizeLarge + 2
+                                font.weight: Font.Bold
+                                color: Theme.surfaceText
+                                maximumLineCount: 2
+                                elide: Text.ElideRight
+                                wrapMode: Text.WordWrap
+                                visible: root.activePlayer
+                            }
+
+                            // Artist & Album
+                            Column {
+                                width: parent.width
+                                spacing: 2
+                                visible: root.activePlayer
+
+                                Row {
+                                    spacing: Theme.spacingXS
+                                    DankIcon {
+                                        name: "person"
+                                        size: 14
+                                        color: Theme.surfaceVariantText
+                                        anchors.verticalCenter: parent.verticalCenter
+                                    }
+                                    StyledText {
+                                        text: root.currentArtist || "Unknown Artist"
+                                        font.pixelSize: Theme.fontSizeMedium
+                                        color: Theme.surfaceText
+                                        anchors.verticalCenter: parent.verticalCenter
+                                        maximumLineCount: 1
+                                        elide: Text.ElideRight
+                                    }
+                                }
+
+                                Row {
+                                    spacing: Theme.spacingXS
+                                    visible: root.currentAlbum !== ""
+                                    DankIcon {
+                                        name: "album"
+                                        size: 14
+                                        color: Theme.surfaceVariantText
+                                        anchors.verticalCenter: parent.verticalCenter
+                                    }
+                                    StyledText {
+                                        text: root.currentAlbum
+                                        font.pixelSize: Theme.fontSizeSmall
+                                        color: Theme.surfaceVariantText
+                                        anchors.verticalCenter: parent.verticalCenter
+                                        maximumLineCount: 1
+                                        elide: Text.ElideRight
+                                    }
+                                }
+                            }
+
+                            // Duration pill
+                            Rectangle {
+                                visible: root.activePlayer && root.currentDuration > 0
+                                width: durationRow.implicitWidth + Theme.spacingS * 2
+                                height: 22
+                                radius: 11
+                                color: Theme.withAlpha(Theme.surfaceContainerHighest, 0.6)
+
+                                Row {
+                                    id: durationRow
+                                    anchors.centerIn: parent
+                                    spacing: Theme.spacingXS
+
+                                    DankIcon {
+                                        name: "schedule"
+                                        size: 12
+                                        color: Theme.surfaceVariantText
+                                        anchors.verticalCenter: parent.verticalCenter
+                                    }
+
+                                    StyledText {
+                                        text: root._formatDuration(root.currentDuration)
+                                        font.pixelSize: Theme.fontSizeSmall
+                                        color: Theme.surfaceVariantText
+                                        anchors.verticalCenter: parent.verticalCenter
+                                    }
+                                }
+                            }
+                        }
                     }
 
-                    // --- Status Chips Section ---
+                    // ── Section label ──
+                    StyledText {
+                        text: "Lyrics Sources"
+                        font.pixelSize: Theme.fontSizeSmall
+                        font.weight: Font.DemiBold
+                        color: Theme.surfaceVariantText
+                        leftPadding: Theme.spacingXS
+                    }
+
+                    // ── Source Cards ──
                     Column {
                         width: parent.width
                         spacing: Theme.spacingS
 
-                        StyledText {
-                            text: "Lyrics Status"
-                            font.pixelSize: Theme.fontSizeMedium
-                            font.weight: Font.DemiBold
-                            color: Theme.surfaceVariantText
+                        SourceCard {
+                            width: parent.width
+                            icon: "cached"
+                            label: "Cache"
+                            sourceStatus: root.cacheStatus
                         }
 
-                        StatusChipRow {
-                            label: "Cache"
-                            status: root.cacheStatus
-                        }
-                        StatusChipRow {
+                        SourceCard {
+                            width: parent.width
+                            icon: "cloud"
                             label: "Navidrome"
-                            status: root.navidromeStatus
+                            sourceStatus: root.navidromeStatus
                         }
-                        StatusChipRow {
+
+                        SourceCard {
+                            width: parent.width
+                            icon: "music_note"
                             label: "Musixmatch"
-                            status: root.musixmatchStatus
+                            sourceStatus: root.musixmatchStatus
                         }
-                        StatusChipRow {
+
+                        SourceCard {
+                            width: parent.width
+                            icon: "library_music"
                             label: "lrclib"
-                            status: root.lrclibStatus
+                            sourceStatus: root.lrclibStatus
                         }
                     }
-
                 }
             }
         }
     }
 
     // -------------------------------------------------------------------------
-    // Reusable status chip row
+    // Reusable source status card
     // -------------------------------------------------------------------------
 
-    component StatusChipRow: Row {
-        id: chipRow
+    component SourceCard: Rectangle {
+        id: sourceCard
+        property string icon: ""
         property string label: ""
-        property int status: 0
+        property int sourceStatus: 0
 
-        spacing: Theme.spacingS
-        visible: status !== 0
+        height: 44
+        radius: Theme.cornerRadius
+        color: sourceStatus === 0
+               ? Theme.withAlpha(Theme.surfaceContainerHighest, 0.3)
+               : Theme.withAlpha(root.chipColor(sourceStatus), 0.06)
+        visible: true
 
-        Rectangle {
-            width: innerChipRow.implicitWidth + Theme.spacingM * 2
-            height: 28
-            radius: 14
-            color: Theme.withAlpha(root.chipColor(chipRow.status), 0.15)
+        Row {
+            anchors {
+                left: parent.left; right: parent.right
+                verticalCenter: parent.verticalCenter
+                leftMargin: Theme.spacingM; rightMargin: Theme.spacingM
+            }
+            spacing: Theme.spacingS
 
-            Row {
-                id: innerChipRow
-                anchors.centerIn: parent
-                spacing: Theme.spacingXS
+            // Source icon
+            Rectangle {
+                width: 28
+                height: 28
+                radius: 14
+                color: sourceCard.sourceStatus === 0
+                       ? Theme.withAlpha(Theme.surfaceContainerHighest, 0.5)
+                       : Theme.withAlpha(root.chipColor(sourceCard.sourceStatus), 0.15)
+                anchors.verticalCenter: parent.verticalCenter
 
                 DankIcon {
-                    name: root.chipIcon(chipRow.status)
+                    anchors.centerIn: parent
+                    name: sourceCard.icon
                     size: 14
-                    color: root.chipColor(chipRow.status)
-                    anchors.verticalCenter: parent.verticalCenter
-                }
-
-                StyledText {
-                    text: chipRow.label
-                    font.pixelSize: Theme.fontSizeSmall
-                    font.weight: Font.DemiBold
-                    color: root.chipColor(chipRow.status)
-                    anchors.verticalCenter: parent.verticalCenter
+                    color: sourceCard.sourceStatus === 0
+                           ? Theme.surfaceVariantText
+                           : root.chipColor(sourceCard.sourceStatus)
                 }
             }
-        }
 
-        StyledText {
-            text: root.chipLabel(chipRow.status)
-            font.pixelSize: Theme.fontSizeSmall
-            color: Theme.surfaceText
-            anchors.verticalCenter: parent.verticalCenter
+            // Label
+            StyledText {
+                text: sourceCard.label
+                font.pixelSize: Theme.fontSizeMedium
+                font.weight: Font.DemiBold
+                color: Theme.surfaceText
+                anchors.verticalCenter: parent.verticalCenter
+                width: 90
+            }
+
+            // Status chip – fills remaining width
+            Item {
+                anchors.verticalCenter: parent.verticalCenter
+                width: parent.width - parent.spacing * 2 - 28 - 90
+                height: 22
+
+                Rectangle {
+                    visible: sourceCard.sourceStatus !== 0
+                    anchors.fill: parent
+                    radius: 11
+                    color: Theme.withAlpha(root.chipColor(sourceCard.sourceStatus), 0.15)
+
+                    Row {
+                        id: statusChipContent
+                        anchors.centerIn: parent
+                        spacing: 4
+
+                        DankIcon {
+                            name: root.chipIcon(sourceCard.sourceStatus)
+                            size: 12
+                            color: root.chipColor(sourceCard.sourceStatus)
+                            anchors.verticalCenter: parent.verticalCenter
+                        }
+
+                        StyledText {
+                            text: root.chipLabel(sourceCard.sourceStatus)
+                            font.pixelSize: Theme.fontSizeSmall - 1
+                            color: root.chipColor(sourceCard.sourceStatus)
+                            anchors.verticalCenter: parent.verticalCenter
+                            maximumLineCount: 1
+                            elide: Text.ElideRight
+                        }
+                    }
+                }
+
+                // Idle label when no status
+                Rectangle {
+                    visible: sourceCard.sourceStatus === 0
+                    anchors.fill: parent
+                    radius: 11
+                    color: Theme.withAlpha(Theme.surfaceContainerHighest, 0.3)
+
+                    StyledText {
+                        anchors.centerIn: parent
+                        text: "Idle"
+                        font.pixelSize: Theme.fontSizeSmall
+                        color: Theme.surfaceVariantText
+                        maximumLineCount: 1
+                    }
+                }
+            }
         }
     }
 
     popoutWidth: 380
-    popoutHeight: 480
+    popoutHeight: 520
 
     Component.onCompleted: {
         console.info("[MusicLyrics] Plugin loaded");
