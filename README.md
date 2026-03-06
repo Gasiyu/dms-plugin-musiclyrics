@@ -8,6 +8,7 @@ A DankMaterialShell widget plugin that displays synced music lyrics from multipl
 * **Live Lyrics:** Shows real-time synced lyrics on the panel bar.
 * **Smart Fetching:** Retrieves lyrics from your local cache, Navidrome, Musixmatch, or lrclib.net.
 * **Media Player Management:** Click the widget to open a popout menu where you can view lyric fetch statuses and switch between active MPRIS media players.
+* **Configurable Mouse Actions:** Bind left/right/middle click (or disable) for opening either the default status pane or a dedicated lyrics pane.
 
 ## Installation
 1. Clone this repo directly to your DankMaterialShell plugins directory:
@@ -21,4 +22,5 @@ A DankMaterialShell widget plugin that displays synced music lyrics from multipl
 ## Configuration
 Access the plugin settings via DMS to configure:
 * **Local Cache:** Enabled by default. Saves downloaded lyrics to `~/.cache/musicLyrics` to speed up loading and reduce network requests.
+* **Interaction:** Choose which mouse button opens **Lyrics Status** and which opens **Lyrics** (left/right/middle/disabled).
 * **Navidrome:** Enter your Server URL, Username, and Password to fetch lyrics from your own instance.

@@ -54,6 +54,53 @@ PluginSettings {
 
     StyledRect {
         width: parent.width
+        height: interactionColumn.implicitHeight + Theme.spacingL * 2
+        radius: Theme.cornerRadius
+        color: Theme.surfaceContainerHigh
+
+        Column {
+            id: interactionColumn
+            anchors.fill: parent
+            anchors.margins: Theme.spacingL
+            spacing: Theme.spacingM
+
+            StyledText {
+                text: "Interaction"
+                font.pixelSize: Theme.fontSizeMedium
+                font.weight: Font.Medium
+                color: Theme.surfaceText
+            }
+
+            SelectionSetting {
+                settingKey: "statusPaneButton"
+                label: "Lyrics Status"
+                description: "Mouse button for the default status pane."
+                defaultValue: "left"
+                options: [
+                    { label: "Disabled", value: "disabled" },
+                    { label: "Left click", value: "left" },
+                    { label: "Right click", value: "right" },
+                    { label: "Middle click", value: "middle" }
+                ]
+            }
+
+            SelectionSetting {
+                settingKey: "lyricsPaneButton"
+                label: "Lyrics"
+                description: "Mouse button for the lyrics pane."
+                defaultValue: "right"
+                options: [
+                    { label: "Disabled", value: "disabled" },
+                    { label: "Left click", value: "left" },
+                    { label: "Right click", value: "right" },
+                    { label: "Middle click", value: "middle" }
+                ]
+            }
+        }
+    }
+
+    StyledRect {
+        width: parent.width
         height: behaviorColumn.implicitHeight + Theme.spacingL * 2
         radius: Theme.cornerRadius
         color: Theme.surfaceContainerHigh
