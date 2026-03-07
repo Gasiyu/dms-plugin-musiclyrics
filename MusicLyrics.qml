@@ -14,6 +14,7 @@ PluginComponent {
     property string navidromeUser: pluginData.navidromeUser ?? ""
     property string navidromePassword: pluginData.navidromePassword ?? ""
     property bool cachingEnabled: pluginData.cachingEnabled ?? true
+    property string extraLrcDirectory: pluginData.extraLrcDirectory ?? ""
     property string statusPaneButton: pluginData.statusPaneButton ?? "left"
     property string lyricsPaneButton: pluginData.lyricsPaneButton ?? "right"
 
@@ -58,6 +59,9 @@ PluginComponent {
         readonly property int lrclib: 2
         readonly property int cache: 3
         readonly property int musixmatch: 4
+        readonly property int local: 5 // legacy local source id (kept for cached entries)
+        readonly property int metadata: 6
+        readonly property int localLrc: 7
     }
 
     // -------------------------------------------------------------------------
@@ -76,6 +80,8 @@ PluginComponent {
     property int lrclibStatus: status.none
     property int musixmatchStatus: status.none
     property int cacheStatus: status.none
+    property int metadataStatus: status.none
+    property int localLrcStatus: status.none
 
     // Fetch state and source
     property int lyricStatus: lyricState.idle
@@ -130,6 +136,8 @@ PluginComponent {
         lrclibStatus = status.none;
         musixmatchStatus = status.none;
         cacheStatus = status.none;
+        metadataStatus = status.none;
+        localLrcStatus = status.none;
         lyricStatus = lyricState.loading;
         lyricSource = lyricSrc.none;
     }
@@ -145,6 +153,13 @@ PluginComponent {
         lrclibStatus = lrclibStatusVal;
         lyricStatus = lyricState.notFound;
         root._cancelActiveFetch = null;
+    }
+
+    function _normalizeIdleSourceStatuses() {
+        if (metadataStatus === status.none)
+            metadataStatus = status.skippedConfig;
+        if (localLrcStatus === status.none)
+            localLrcStatus = status.skippedConfig;
     }
 
     // -------------------------------------------------------------------------
@@ -174,9 +189,36 @@ PluginComponent {
             return homeDir + rawPath.substring(1);
         return rawPath;
     }
+    readonly property string _expandedExtraLrcDirectory: {
+        const homeDir = Quickshell.env("HOME") || "";
+        const rawPath = (extraLrcDirectory || "").trim();
+        if (!rawPath)
+            return "";
+        if (rawPath.startsWith("$HOME/") && homeDir.length > 0)
+            return homeDir + rawPath.substring(5);
+        if (rawPath.startsWith("~/") && homeDir.length > 0)
+            return homeDir + rawPath.substring(1);
+        return rawPath;
+    }
 
     function _cacheFilePath(title, artist) {
         return _cacheDir + "/" + _cacheKey(title, artist) + ".json";
+    }
+
+    function _currentTrackFilePath() {
+        const raw = activePlayer ? (activePlayer.trackUrl || activePlayer.url || "") : "";
+        if (!raw)
+            return "";
+        if (raw.startsWith("file://")) {
+            try {
+                return decodeURIComponent(raw.substring(7));
+            } catch (e) {
+                return raw.substring(7);
+            }
+        }
+        if (raw.startsWith("/"))
+            return raw;
+        return "";
     }
 
     function seekToLyricLine(index) {
@@ -294,6 +336,153 @@ PluginComponent {
         }));
     }
 
+    property var _localLyricsCallback: null
+    property string _localLyricsStdout: ""
+
+    Process {
+        id: localLyricsLookupProcess
+        running: false
+        command: []
+
+        stdout: SplitParser {
+            splitMarker: "\n"
+            onRead: function (data) {
+                if (!data)
+                    return;
+                if (root._localLyricsStdout.length > 0)
+                    root._localLyricsStdout += "\n";
+                root._localLyricsStdout += data;
+            }
+        }
+
+        onExited: function () {
+            const callback = root._localLyricsCallback;
+            root._localLyricsCallback = null;
+            if (!callback)
+                return;
+
+            const raw = (root._localLyricsStdout || "").trim();
+            root._localLyricsStdout = "";
+            if (!raw) {
+                callback(null, "");
+                return;
+            }
+
+            try {
+                const payload = JSON.parse(raw);
+                callback(payload.text || null, payload.source || "");
+            } catch (e) {
+                console.warn("[MusicLyrics] Local lyrics parse failed: " + e);
+                callback(null, "");
+            }
+        }
+    }
+
+    function _lookupLocalLyrics(title, artist, callback) {
+        const trackPath = _currentTrackFilePath();
+        const extraDir = _expandedExtraLrcDirectory;
+        if (!trackPath && !extraDir) {
+            callback(null, "");
+            return;
+        }
+
+        const script = `import json, os, subprocess, sys
+title, artist, track_path, extra_dir = sys.argv[1:5]
+
+def safe_name(s):
+    return (s or "").replace("/", "_").replace("\\\\", "_").strip()
+
+def read_text(path):
+    try:
+        with open(path, "r", encoding="utf-8", errors="ignore") as f:
+            return f.read()
+    except Exception:
+        return ""
+
+def find_file_in_dir(base_dir, names):
+    if not base_dir or not os.path.isdir(base_dir):
+        return ""
+    seen = set()
+    for n in names:
+        if not n:
+            continue
+        p = os.path.join(base_dir, n + ".lrc")
+        if p in seen:
+            continue
+        seen.add(p)
+        if os.path.isfile(p):
+            text = read_text(p)
+            if text.strip():
+                return text
+    return ""
+
+def find_file_recursive(root_dir, names):
+    if not root_dir or not os.path.isdir(root_dir):
+        return ""
+    seen = set()
+    for d, _dirs, _files in os.walk(root_dir):
+        for n in names:
+            if not n:
+                continue
+            p = os.path.join(d, n + ".lrc")
+            if p in seen:
+                continue
+            seen.add(p)
+            if os.path.isfile(p):
+                text = read_text(p)
+                if text.strip():
+                    return text
+    return ""
+
+def read_metadata_lrc(path):
+    if not path or not os.path.isfile(path):
+        return ""
+    try:
+        proc = subprocess.run(
+            ["ffprobe", "-v", "quiet", "-of", "json", "-show_entries", "format_tags", path],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.DEVNULL,
+            text=True,
+            check=False,
+        )
+        if proc.returncode != 0 or not proc.stdout:
+            return ""
+        data = json.loads(proc.stdout)
+        tags = ((data.get("format") or {}).get("tags") or {})
+        for key in ["synchronized_lyrics", "SYNCEDLYRICS", "syncedlyrics", "lyrics", "LYRICS"]:
+            val = tags.get(key)
+            if isinstance(val, str) and val.strip():
+                return val
+    except Exception:
+        return ""
+    return ""
+
+base_dir = os.path.dirname(track_path) if track_path else ""
+track_stem = os.path.splitext(os.path.basename(track_path))[0] if track_path else ""
+names = []
+for candidate in [track_stem, safe_name(title), safe_name(artist + " - " + title), safe_name(title + " - " + artist)]:
+    if candidate and candidate not in names:
+        names.append(candidate)
+
+metadata = read_metadata_lrc(track_path)
+if metadata.strip():
+    print(json.dumps({"source": "metadata", "text": metadata}))
+    raise SystemExit(0)
+
+text = find_file_in_dir(base_dir, names)
+if not text.strip():
+    text = find_file_recursive(extra_dir, names)
+if text.strip():
+    print(json.dumps({"source": "file", "text": text}))
+else:
+    print("")`;
+
+        _localLyricsStdout = "";
+        _localLyricsCallback = callback;
+        localLyricsLookupProcess.command = ["python3", "-c", script, title || "", artist || "", trackPath || "", extraDir || ""];
+        localLyricsLookupProcess.running = true;
+    }
+
     // -------------------------------------------------------------------------
     // Fetch orchestration
     // -------------------------------------------------------------------------
@@ -309,6 +498,11 @@ PluginComponent {
             _cancelActiveFetch();
             _cancelActiveFetch = null;
         }
+        if (localLyricsLookupProcess.running) {
+            localLyricsLookupProcess.running = false;
+            _localLyricsCallback = null;
+            _localLyricsStdout = "";
+        }
 
         _lastFetchedTrack = currentTitle;
         _lastFetchedArtist = currentArtist;
@@ -320,7 +514,7 @@ PluginComponent {
         var capturedTitle = currentTitle;
         var capturedArtist = currentArtist;
 
-        function _startFetch() {
+        function _startRemoteFetch() {
             if (_configValid) {
                 _fetchFromNavidrome(capturedTitle, capturedArtist);
             } else {
@@ -328,6 +522,40 @@ PluginComponent {
                 console.info("[MusicLyrics] Navidrome: skipped (not configured)");
                 _fetchFromMusixmatch(capturedTitle, capturedArtist);
             }
+        }
+
+        function _startFetch() {
+            const hasTrackPath = !!_currentTrackFilePath();
+            const hasLocalLrcSearch = hasTrackPath || _expandedExtraLrcDirectory !== "";
+            root.metadataStatus = hasTrackPath ? status.searching : status.skippedConfig;
+            root.localLrcStatus = hasLocalLrcSearch ? status.searching : status.skippedConfig;
+
+            _lookupLocalLyrics(capturedTitle, capturedArtist, function (lrcText, localSource) {
+                if (capturedTitle !== root._lastFetchedTrack || capturedArtist !== root._lastFetchedArtist)
+                    return;
+
+                if (lrcText) {
+                    const parsed = root.parseLrc(lrcText);
+                    if (parsed.length > 0) {
+                        root.lyricsLines = parsed;
+                        root.lyricStatus = lyricState.synced;
+                        root.lyricSource = localSource === "metadata" ? lyricSrc.metadata : lyricSrc.localLrc;
+                        root.metadataStatus = localSource === "metadata" ? status.found : (hasTrackPath ? status.notFound : status.skippedConfig);
+                        root.localLrcStatus = localSource === "metadata" ? status.skippedFound : status.found;
+                        root.navidromeStatus = status.skippedFound;
+                        root.lrclibStatus = status.skippedFound;
+                        root.musixmatchStatus = status.skippedFound;
+                        console.info("[MusicLyrics] ✓ Local " + localSource + ": synced lyrics found (" + parsed.length + " lines) for \"" + capturedTitle + "\"");
+                        if (root.cachingEnabled)
+                            root.writeToCache(capturedTitle, capturedArtist, parsed, root.lyricSource);
+                        return;
+                    }
+                }
+
+                root.metadataStatus = hasTrackPath ? status.notFound : status.skippedConfig;
+                root.localLrcStatus = hasLocalLrcSearch ? status.notFound : status.skippedConfig;
+                _startRemoteFetch();
+            });
         }
 
         if (cachingEnabled) {
@@ -338,11 +566,14 @@ PluginComponent {
                 if (cached && cached.lines && cached.lines.length > 0) {
                     root.lyricsLines = cached.lines;
                     root.lyricStatus = lyricState.synced;
-                    root.lyricSource = cached.source > 0 ? cached.source : lyricSrc.cache;
+                    root.lyricSource = lyricSrc.cache;
                     root.cacheStatus = status.cacheHit;
+                    root.metadataStatus = status.skippedFound;
+                    root.localLrcStatus = status.skippedFound;
                     root.navidromeStatus = status.skippedFound;
                     root.lrclibStatus = status.skippedFound;
                     root.musixmatchStatus = status.skippedFound;
+                    root._normalizeIdleSourceStatuses();
                     console.info("[MusicLyrics] ✓ Cache: lyrics loaded for \"" + capturedTitle + "\" (" + cached.lines.length + " lines)");
                     return;
                 }
@@ -351,6 +582,7 @@ PluginComponent {
             });
         } else {
             cacheStatus = status.cacheDisabled;
+            _normalizeIdleSourceStatuses();
             _startFetch();
         }
     }
@@ -983,7 +1215,13 @@ PluginComponent {
                         }
 
                         StyledText {
-                            text: root.lyricSource === lyricSrc.navidrome ? "Navidrome" : root.lyricSource === lyricSrc.lrclib ? "lrclib" : root.lyricSource === lyricSrc.musixmatch ? "Musixmatch" : ""
+                            text: root.lyricSource === lyricSrc.navidrome ? "Navidrome"
+                                  : root.lyricSource === lyricSrc.lrclib ? "lrclib"
+                                  : root.lyricSource === lyricSrc.musixmatch ? "Musixmatch"
+                                  : root.lyricSource === lyricSrc.metadata ? "Metadata"
+                                  : (root.lyricSource === lyricSrc.localLrc || root.lyricSource === lyricSrc.local) ? "Local .lrc"
+                                  : root.lyricSource === lyricSrc.cache ? "Cache"
+                                  : ""
                             font.pixelSize: Theme.fontSizeSmall
                             color: Theme.background
                             anchors.verticalCenter: parent.verticalCenter
@@ -1143,10 +1381,64 @@ PluginComponent {
 
         content: Component {
             Rectangle {
+                id: lyricsPane
                 width: parent.width
                 height: 560
                 radius: Theme.cornerRadius
                 color: Theme.surfaceContainer
+                property bool autoScrollPaused: false
+                property bool autoScrollInternal: false
+
+                function pauseAutoScroll() {
+                    autoScrollPaused = true;
+                    autoScrollResumeTimer.restart();
+                }
+
+                function syncToCurrentLine() {
+                    if (autoScrollPaused || root.currentLineIndex < 0 || !lyricsFlick.visibleArea)
+                        return;
+                    const item = lineRepeater.itemAt(root.currentLineIndex);
+                    if (!item)
+                        return;
+
+                    const pad = Math.max(12, Theme.spacingM);
+                    const top = lyricsFlick.contentY;
+                    const bottom = top + lyricsFlick.height;
+                    const itemTop = item.y;
+                    const itemBottom = item.y + item.height;
+                    const alreadyVisible = itemTop >= (top + pad) && itemBottom <= (bottom - pad);
+                    if (alreadyVisible)
+                        return;
+
+                    const maxY = Math.max(0, lyricsFlick.contentHeight - lyricsFlick.height);
+                    const target = Math.max(0, Math.min(maxY, itemTop - lyricsFlick.height * 0.35));
+                    autoScrollInternal = true;
+                    lyricsFlick.contentY = target;
+                    autoScrollInternal = false;
+                }
+
+                Timer {
+                    id: autoScrollResumeTimer
+                    interval: 5000
+                    repeat: false
+                    onTriggered: {
+                        lyricsPane.autoScrollPaused = false;
+                        lyricsPane.syncToCurrentLine();
+                    }
+                }
+
+                Connections {
+                    target: root
+                    function onCurrentLineIndexChanged() {
+                        Qt.callLater(lyricsPane.syncToCurrentLine);
+                    }
+                    function onLyricsLinesChanged() {
+                        Qt.callLater(lyricsPane.syncToCurrentLine);
+                    }
+                }
+
+                Component.onCompleted: Qt.callLater(syncToCurrentLine)
+                onVisibleChanged: if (visible) Qt.callLater(syncToCurrentLine)
 
                 Flickable {
                     id: lyricsFlick
@@ -1154,6 +1446,21 @@ PluginComponent {
                     anchors.margins: Theme.spacingM
                     clip: true
                     contentHeight: lyricsColumn.implicitHeight
+                    onMovementStarted: {
+                        if (!lyricsPane.autoScrollInternal)
+                            lyricsPane.pauseAutoScroll();
+                    }
+                    Behavior on contentY {
+                        NumberAnimation {
+                            duration: 180
+                            easing.type: Easing.OutCubic
+                        }
+                    }
+
+                    WheelHandler {
+                        target: lyricsFlick
+                        onWheel: lyricsPane.pauseAutoScroll()
+                    }
 
                     Column {
                         id: lyricsColumn
@@ -1207,6 +1514,7 @@ PluginComponent {
                         }
 
                         Repeater {
+                            id: lineRepeater
                             model: root.lyricsLines.length
                             delegate: Item {
                                 required property int index
@@ -1457,6 +1765,20 @@ PluginComponent {
                             icon: "cached"
                             label: "Cache"
                             sourceStatus: root.cacheStatus
+                        }
+
+                        SourceCard {
+                            width: parent.width
+                            icon: "badge"
+                            label: "Metadata"
+                            sourceStatus: root.metadataStatus
+                        }
+
+                        SourceCard {
+                            width: parent.width
+                            icon: "description"
+                            label: "Local .lrc"
+                            sourceStatus: root.localLrcStatus
                         }
 
                         SourceCard {

@@ -57,6 +57,14 @@ PluginSettings {
                 placeholder: "$HOME/.cache/musicLyrics"
                 defaultValue: "$HOME/.cache/musicLyrics"
             }
+
+            StringSetting {
+                settingKey: "extraLrcDirectory"
+                label: ".lrc Directory"
+                description: "Optional directory to search for .lrc files."
+                placeholder: ""
+                defaultValue: ""
+            }
         }
     }
 
