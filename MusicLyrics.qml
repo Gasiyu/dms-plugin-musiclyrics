@@ -162,6 +162,63 @@ PluginComponent {
             localLrcStatus = status.skippedConfig;
     }
 
+    function _expandHomePath(rawPath, fallbackPath) {
+        const homeDir = Quickshell.env("HOME") || "";
+        const raw = (rawPath || fallbackPath || "").trim();
+        const path = raw.length > 0 ? raw : (fallbackPath || "");
+        if (path.startsWith("$HOME/") && homeDir.length > 0)
+            return homeDir + path.substring(5);
+        if (path.startsWith("~/") && homeDir.length > 0)
+            return homeDir + path.substring(1);
+        return path;
+    }
+
+    function _resetLocalLookupProcess() {
+        if (localLyricsLookupProcess.running)
+            localLyricsLookupProcess.running = false;
+        _localLyricsCallback = null;
+        _localLyricsStdout = "";
+    }
+
+    function _cancelInFlightLookups() {
+        if (_cancelActiveFetch) {
+            _cancelActiveFetch();
+            _cancelActiveFetch = null;
+        }
+        _resetLocalLookupProcess();
+    }
+
+    function _setRemoteStatusesSkippedFound() {
+        navidromeStatus = status.skippedFound;
+        lrclibStatus = status.skippedFound;
+        musixmatchStatus = status.skippedFound;
+    }
+
+    function _setLocalStatusesForSource(localSource, hasTrackPath) {
+        metadataStatus = localSource === "metadata" ? status.found : (hasTrackPath ? status.notFound : status.skippedConfig);
+        localLrcStatus = localSource === "metadata" ? status.skippedFound : status.found;
+    }
+
+    function _setLocalStatusesNotFound(hasTrackPath, hasLocalLrcSearch) {
+        metadataStatus = hasTrackPath ? status.notFound : status.skippedConfig;
+        localLrcStatus = hasLocalLrcSearch ? status.notFound : status.skippedConfig;
+    }
+
+    function _applyCachedLyrics(cached, title, artist) {
+        if (!(cached && cached.lines && cached.lines.length > 0))
+            return false;
+        lyricsLines = cached.lines;
+        lyricStatus = lyricState.synced;
+        lyricSource = lyricSrc.cache;
+        cacheStatus = status.cacheHit;
+        metadataStatus = status.skippedFound;
+        localLrcStatus = status.skippedFound;
+        _setRemoteStatusesSkippedFound();
+        _normalizeIdleSourceStatuses();
+        console.info("[MusicLyrics] ✓ Cache: lyrics loaded for \"" + title + "\" (" + cached.lines.length + " lines)");
+        return true;
+    }
+
     // -------------------------------------------------------------------------
     // Cache helpers
     // -------------------------------------------------------------------------
@@ -180,25 +237,10 @@ PluginComponent {
 
     readonly property string _defaultLyricsDir: "$HOME/.cache/musicLyrics"
     readonly property string _cacheDir: {
-        const homeDir = Quickshell.env("HOME") || "";
-        const configured = (pluginData.lyricsDirectory || _defaultLyricsDir).trim();
-        const rawPath = configured.length > 0 ? configured : _defaultLyricsDir;
-        if (rawPath.startsWith("$HOME/") && homeDir.length > 0)
-            return homeDir + rawPath.substring(5);
-        if (rawPath.startsWith("~/") && homeDir.length > 0)
-            return homeDir + rawPath.substring(1);
-        return rawPath;
+        return _expandHomePath(pluginData.lyricsDirectory, _defaultLyricsDir);
     }
     readonly property string _expandedExtraLrcDirectory: {
-        const homeDir = Quickshell.env("HOME") || "";
-        const rawPath = (extraLrcDirectory || "").trim();
-        if (!rawPath)
-            return "";
-        if (rawPath.startsWith("$HOME/") && homeDir.length > 0)
-            return homeDir + rawPath.substring(5);
-        if (rawPath.startsWith("~/") && homeDir.length > 0)
-            return homeDir + rawPath.substring(1);
-        return rawPath;
+        return _expandHomePath(extraLrcDirectory, "");
     }
 
     function _cacheFilePath(title, artist) {
@@ -338,55 +380,7 @@ PluginComponent {
 
     property var _localLyricsCallback: null
     property string _localLyricsStdout: ""
-
-    Process {
-        id: localLyricsLookupProcess
-        running: false
-        command: []
-
-        stdout: SplitParser {
-            splitMarker: "\n"
-            onRead: function (data) {
-                if (!data)
-                    return;
-                if (root._localLyricsStdout.length > 0)
-                    root._localLyricsStdout += "\n";
-                root._localLyricsStdout += data;
-            }
-        }
-
-        onExited: function () {
-            const callback = root._localLyricsCallback;
-            root._localLyricsCallback = null;
-            if (!callback)
-                return;
-
-            const raw = (root._localLyricsStdout || "").trim();
-            root._localLyricsStdout = "";
-            if (!raw) {
-                callback(null, "");
-                return;
-            }
-
-            try {
-                const payload = JSON.parse(raw);
-                callback(payload.text || null, payload.source || "");
-            } catch (e) {
-                console.warn("[MusicLyrics] Local lyrics parse failed: " + e);
-                callback(null, "");
-            }
-        }
-    }
-
-    function _lookupLocalLyrics(title, artist, callback) {
-        const trackPath = _currentTrackFilePath();
-        const extraDir = _expandedExtraLrcDirectory;
-        if (!trackPath && !extraDir) {
-            callback(null, "");
-            return;
-        }
-
-        const script = `import json, os, subprocess, sys
+    readonly property string _localLyricsPythonScript: `import json, os, subprocess, sys
 title, artist, track_path, extra_dir = sys.argv[1:5]
 
 def safe_name(s):
@@ -475,11 +469,57 @@ if not text.strip():
 if text.strip():
     print(json.dumps({"source": "file", "text": text}))
 else:
-    print("")`;
+    print("")`
 
-        _localLyricsStdout = "";
+    Process {
+        id: localLyricsLookupProcess
+        running: false
+        command: []
+
+        stdout: SplitParser {
+            splitMarker: "\n"
+            onRead: function (data) {
+                if (!data)
+                    return;
+                if (root._localLyricsStdout.length > 0)
+                    root._localLyricsStdout += "\n";
+                root._localLyricsStdout += data;
+            }
+        }
+
+        onExited: function () {
+            const callback = root._localLyricsCallback;
+            root._localLyricsCallback = null;
+            if (!callback)
+                return;
+
+            const raw = (root._localLyricsStdout || "").trim();
+            root._localLyricsStdout = "";
+            if (!raw) {
+                callback(null, "");
+                return;
+            }
+
+            try {
+                const payload = JSON.parse(raw);
+                callback(payload.text || null, payload.source || "");
+            } catch (e) {
+                console.warn("[MusicLyrics] Local lyrics parse failed: " + e);
+                callback(null, "");
+            }
+        }
+    }
+
+    function _lookupLocalLyrics(title, artist, callback) {
+        const trackPath = _currentTrackFilePath();
+        const extraDir = _expandedExtraLrcDirectory;
+        if (!trackPath && !extraDir) {
+            callback(null, "");
+            return;
+        }
+        _resetLocalLookupProcess();
         _localLyricsCallback = callback;
-        localLyricsLookupProcess.command = ["python3", "-c", script, title || "", artist || "", trackPath || "", extraDir || ""];
+        localLyricsLookupProcess.command = ["python3", "-c", _localLyricsPythonScript, title || "", artist || "", trackPath || "", extraDir || ""];
         localLyricsLookupProcess.running = true;
     }
 
@@ -493,16 +533,8 @@ else:
         if (currentTitle === _lastFetchedTrack && currentArtist === _lastFetchedArtist)
             return;
 
-        // Cancel any in-flight XHR before starting fresh
-        if (_cancelActiveFetch) {
-            _cancelActiveFetch();
-            _cancelActiveFetch = null;
-        }
-        if (localLyricsLookupProcess.running) {
-            localLyricsLookupProcess.running = false;
-            _localLyricsCallback = null;
-            _localLyricsStdout = "";
-        }
+        // Cancel any in-flight lookups before starting fresh
+        _cancelInFlightLookups();
 
         _lastFetchedTrack = currentTitle;
         _lastFetchedArtist = currentArtist;
@@ -540,11 +572,8 @@ else:
                         root.lyricsLines = parsed;
                         root.lyricStatus = lyricState.synced;
                         root.lyricSource = localSource === "metadata" ? lyricSrc.metadata : lyricSrc.localLrc;
-                        root.metadataStatus = localSource === "metadata" ? status.found : (hasTrackPath ? status.notFound : status.skippedConfig);
-                        root.localLrcStatus = localSource === "metadata" ? status.skippedFound : status.found;
-                        root.navidromeStatus = status.skippedFound;
-                        root.lrclibStatus = status.skippedFound;
-                        root.musixmatchStatus = status.skippedFound;
+                        root._setLocalStatusesForSource(localSource, hasTrackPath);
+                        root._setRemoteStatusesSkippedFound();
                         console.info("[MusicLyrics] ✓ Local " + localSource + ": synced lyrics found (" + parsed.length + " lines) for \"" + capturedTitle + "\"");
                         if (root.cachingEnabled)
                             root.writeToCache(capturedTitle, capturedArtist, parsed, root.lyricSource);
@@ -552,8 +581,7 @@ else:
                     }
                 }
 
-                root.metadataStatus = hasTrackPath ? status.notFound : status.skippedConfig;
-                root.localLrcStatus = hasLocalLrcSearch ? status.notFound : status.skippedConfig;
+                root._setLocalStatusesNotFound(hasTrackPath, hasLocalLrcSearch);
                 _startRemoteFetch();
             });
         }
@@ -563,18 +591,7 @@ else:
                 // Guard: track may have changed while the file read was in progress
                 if (capturedTitle !== root._lastFetchedTrack || capturedArtist !== root._lastFetchedArtist)
                     return;
-                if (cached && cached.lines && cached.lines.length > 0) {
-                    root.lyricsLines = cached.lines;
-                    root.lyricStatus = lyricState.synced;
-                    root.lyricSource = lyricSrc.cache;
-                    root.cacheStatus = status.cacheHit;
-                    root.metadataStatus = status.skippedFound;
-                    root.localLrcStatus = status.skippedFound;
-                    root.navidromeStatus = status.skippedFound;
-                    root.lrclibStatus = status.skippedFound;
-                    root.musixmatchStatus = status.skippedFound;
-                    root._normalizeIdleSourceStatuses();
-                    console.info("[MusicLyrics] ✓ Cache: lyrics loaded for \"" + capturedTitle + "\" (" + cached.lines.length + " lines)");
+                if (root._applyCachedLyrics(cached, capturedTitle, capturedArtist)) {
                     return;
                 }
                 root.cacheStatus = status.cacheMiss;
