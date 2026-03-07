@@ -163,7 +163,7 @@ PluginComponent {
         return _fnv1a32((title + "\x00" + artist).toLowerCase());
     }
 
-    readonly property string _defaultLyricsDir: "$HOME/.config/DankMaterialShell/plugins/musiclyrics/lyrics"
+    readonly property string _defaultLyricsDir: "$HOME/.cache/musicLyrics"
     readonly property string _cacheDir: {
         const homeDir = Quickshell.env("HOME") || "";
         const configured = (pluginData.lyricsDirectory || _defaultLyricsDir).trim();

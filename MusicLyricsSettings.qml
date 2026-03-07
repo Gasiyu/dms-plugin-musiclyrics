@@ -54,8 +54,8 @@ PluginSettings {
                 settingKey: "lyricsDirectory"
                 label: "Lyrics Directory"
                 description: "Directory used to store cached lyrics files."
-                placeholder: "$HOME/.config/DankMaterialShell/plugins/musiclyrics/lyrics"
-                defaultValue: "$HOME/.config/DankMaterialShell/plugins/musiclyrics/lyrics"
+                placeholder: "$HOME/.cache/musicLyrics"
+                defaultValue: "$HOME/.cache/musicLyrics"
             }
         }
     }
