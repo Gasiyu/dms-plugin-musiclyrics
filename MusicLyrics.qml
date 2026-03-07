@@ -179,6 +179,22 @@ PluginComponent {
         return _cacheDir + "/" + _cacheKey(title, artist) + ".json";
     }
 
+    function seekToLyricLine(index) {
+        if (!activePlayer || index < 0 || index >= lyricsLines.length)
+            return;
+        const line = lyricsLines[index];
+        if (!line || typeof line.time !== "number" || !Number.isFinite(line.time))
+            return;
+
+        const duration = Math.max(0, activePlayer.length || 0);
+        if (duration > 0) {
+            const clamped = Math.max(0, Math.min(duration * 0.99, line.time));
+            activePlayer.position = clamped;
+        } else {
+            activePlayer.position = Math.max(0, line.time);
+        }
+    }
+
     // Static one-shot timer for XHR request timeouts
     Timer {
         id: xhrTimeoutTimer
@@ -1192,14 +1208,28 @@ PluginComponent {
 
                         Repeater {
                             model: root.lyricsLines.length
-                            delegate: StyledText {
+                            delegate: Item {
                                 required property int index
-                                text: root.lyricsLines[index].text || ""
                                 width: lyricsColumn.width
-                                wrapMode: Text.WordWrap
-                                font.pixelSize: Theme.fontSizeMedium
-                                color: index === root.currentLineIndex ? Theme.primary : Theme.surfaceText
-                                font.weight: index === root.currentLineIndex ? Font.DemiBold : Font.Normal
+                                implicitHeight: lineText.implicitHeight
+
+                                StyledText {
+                                    id: lineText
+                                    text: root.lyricsLines[index].text || ""
+                                    width: parent.width
+                                    wrapMode: Text.WordWrap
+                                    font.pixelSize: Theme.fontSizeMedium
+                                    color: index === root.currentLineIndex ? Theme.primary : Theme.surfaceText
+                                    font.weight: index === root.currentLineIndex ? Font.DemiBold : Font.Normal
+                                }
+
+                                MouseArea {
+                                    anchors.fill: parent
+                                    enabled: !!root.activePlayer
+                                    hoverEnabled: enabled
+                                    cursorShape: enabled ? Qt.PointingHandCursor : Qt.ArrowCursor
+                                    onClicked: root.seekToLyricLine(index)
+                                }
                             }
                         }
                     }
