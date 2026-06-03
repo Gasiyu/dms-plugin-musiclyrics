@@ -14,6 +14,7 @@ PluginComponent {
     property string navidromeUser: pluginData.navidromeUser ?? ""
     property string navidromePassword: pluginData.navidromePassword ?? ""
     property bool cachingEnabled: pluginData.cachingEnabled ?? true
+    property string playerWhitelist: pluginData.playerWhitelist ?? ""
 
     readonly property MprisPlayer activePlayer: MprisController.activePlayer
     property var allPlayers: MprisController.availablePlayers
@@ -270,8 +271,27 @@ PluginComponent {
     // -------------------------------------------------------------------------
 
     function fetchLyricsIfNeeded() {
+        var player = root.activePlayer;
+        var whitelist = root.playerWhitelist.split(",").map(function(s) { return s.trim(); });
+        if (!player)
+            return;
+        var identity = player.identity || "";
+        var isMusicPlayer = false;
+        for (var i = 0; i < whitelist.length; i++) {
+            if (identity.toLowerCase().includes(whitelist[i])) {
+                isMusicPlayer = true;
+                break;
+            }
+        }
+        if (!isMusicPlayer)
+        {
+            _resetLyricsState();
+            return;
+        }
+
         if (!currentTitle)
             return;
+
         if (currentTitle === _lastFetchedTrack && currentArtist === _lastFetchedArtist)
             return;
 
