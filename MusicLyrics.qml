@@ -14,6 +14,7 @@ PluginComponent {
     property string navidromeUser: pluginData.navidromeUser ?? ""
     property string navidromePassword: pluginData.navidromePassword ?? ""
     property bool cachingEnabled: pluginData.cachingEnabled ?? true
+    property string playerWhitelist: pluginData.playerWhitelist ?? ""
 
     readonly property MprisPlayer activePlayer: MprisController.activePlayer
     property var allPlayers: MprisController.availablePlayers
@@ -56,6 +57,7 @@ PluginComponent {
         readonly property int lrclib: 2
         readonly property int cache: 3
         readonly property int musixmatch: 4
+        readonly property int lrcapi: 5
     }
 
     // -------------------------------------------------------------------------
@@ -72,6 +74,7 @@ PluginComponent {
     // Chip status properties
     property int navidromeStatus: status.none
     property int lrclibStatus: status.none
+    property int lrcapiStatus: status.none
     property int musixmatchStatus: status.none
     property int cacheStatus: status.none
 
@@ -126,6 +129,7 @@ PluginComponent {
         currentLineIndex = -1;
         navidromeStatus = status.none;
         lrclibStatus = status.none;
+        lrcapiStatus = status.none;
         musixmatchStatus = status.none;
         cacheStatus = status.none;
         lyricStatus = lyricState.loading;
@@ -135,7 +139,7 @@ PluginComponent {
     // Sets the "no synced lyrics" state, used by musixmatch handlers
     function _setMusixmatchNotFound(musixmatchStatusVal) {
         musixmatchStatus = musixmatchStatusVal;
-        _fetchFromLrclib(_lastFetchedTrack, _lastFetchedArtist);
+        _fetchFromLrcApi(_lastFetchedTrack, _lastFetchedArtist);
     }
 
     // Sets the final "no synced lyrics" state after all sources exhausted
@@ -267,8 +271,27 @@ PluginComponent {
     // -------------------------------------------------------------------------
 
     function fetchLyricsIfNeeded() {
+        var player = root.activePlayer;
+        var whitelist = root.playerWhitelist.split(",").map(function(s) { return s.trim(); });
+        if (!player)
+            return;
+        var identity = player.identity || "";
+        var isMusicPlayer = false;
+        for (var i = 0; i < whitelist.length; i++) {
+            if (identity.toLowerCase().includes(whitelist[i])) {
+                isMusicPlayer = true;
+                break;
+            }
+        }
+        if (!isMusicPlayer)
+        {
+            _resetLyricsState();
+            return;
+        }
+
         if (!currentTitle)
             return;
+
         if (currentTitle === _lastFetchedTrack && currentArtist === _lastFetchedArtist)
             return;
 
@@ -310,6 +333,7 @@ PluginComponent {
                     root.cacheStatus = status.cacheHit;
                     root.navidromeStatus = status.skippedFound;
                     root.lrclibStatus = status.skippedFound;
+                    root.lrcapiStatus = status.skippedFound;
                     root.musixmatchStatus = status.skippedFound;
                     console.info("[MusicLyrics] ✓ Cache: lyrics loaded for \"" + capturedTitle + "\" (" + cached.lines.length + " lines)");
                     return;
@@ -512,6 +536,7 @@ PluginComponent {
                     root.lyricStatus = lyricState.synced;
                     root.lyricSource = lyricSrc.navidrome;
                     root.lrclibStatus = status.skippedFound;
+                    root.lrcapiStatus = status.skippedFound;
                     root.musixmatchStatus = status.skippedFound;
                     console.info("[MusicLyrics] ✓ Navidrome: synced lyrics found (" + lines.length + " lines) for \"" + expectedTitle + "\"");
                     root._cancelActiveFetch = null;
@@ -600,6 +625,58 @@ PluginComponent {
     }
 
     // -------------------------------------------------------------------------
+    // api.lrc.cx fetch
+    // -------------------------------------------------------------------------
+
+    function _fetchFromLrcApi(expectedTitle, expectedArtist) {
+        if (lyricStatus === lyricState.synced) {
+            lrcapiStatus = status.skippedFound;
+            console.info("[MusicLyrics] lrcapi: skipped (synced lyrics already found)");
+            return;
+        }
+
+        lrcapiStatus = status.searching;
+        console.info("[MusicLyrics] lrcapi: searching for \"" + expectedTitle + "\" by " + expectedArtist);
+
+        var url = "https://api.lrc.cx/lyrics?artist=" + encodeURIComponent(expectedArtist) + "&title=" + encodeURIComponent(expectedTitle);
+        if (currentAlbum)
+            url += "&album=" + encodeURIComponent(currentAlbum);
+
+        root._cancelActiveFetch = _xhrGet(url, 20000, function (responseText, httpStatus) {
+            var rawData = (responseText || "").trim();
+            console.log("[MusicLyrics] lrcapi: response length = " + rawData.length);
+            if (rawData.length === 0) {
+                lrcapiStatus = status.error;
+                console.warn("[MusicLyrics] lrcapi: empty response (HTTP " + httpStatus + ")");
+                return;
+            }
+            try {
+                var lines = parseLrc(rawData);
+                if (lines && lines.length > 0) {
+                    root.lyricsLines = lines;
+                    root.lyricStatus = lyricState.synced;
+                    root.lrcapiStatus = status.found;
+                    root.lyricSource = lyricSrc.lrcapi;
+                    console.info("[MusicLyrics] ✓ lrcapi: synced lyrics found (" + root.lyricsLines.length + " lines) for \"" + expectedTitle + "\"");
+                    root._cancelActiveFetch = null;
+                    if (root.cachingEnabled)
+                        root.writeToCache(expectedTitle, expectedArtist, root.lyricsLines, lyricSrc.lrcapi);
+                } else {
+                    lrcapiStatus = status.notFound;
+                }
+                _fetchFromLrclib(_lastFetchedTrack, _lastFetchedArtist);
+            } catch (e) {
+                root._setFinalNotFound(status.error);
+                console.warn("[MusicLyrics] lrcapi: failed to parse response — " + e);
+                console.warn("[MusicLyrics] lrcapi: raw data: " + rawData.substring(0, 200));
+            }
+        }, function (errMsg) {
+            root._setFinalNotFound(status.error);
+            console.warn("[MusicLyrics] lrcapi: request failed — " + errMsg);
+        });
+    }
+
+    // -------------------------------------------------------------------------
     // Musixmatch fetch
     // -------------------------------------------------------------------------
 
@@ -621,10 +698,7 @@ PluginComponent {
             return;
         }
 
-        var url = "https://apic-desktop.musixmatch.com/ws/1.1/token.get"
-            + "?user_language=en"
-            + "&app_id=web-desktop-app-v1.0"
-            + "&t=" + Date.now();
+        var url = "https://apic-desktop.musixmatch.com/ws/1.1/token.get" + "?user_language=en" + "&app_id=web-desktop-app-v1.0" + "&t=" + Date.now();
 
         console.info("[MusicLyrics] Musixmatch: fetching token…");
 
@@ -635,7 +709,7 @@ PluginComponent {
                 var token = body ? body.user_token : undefined;
                 if (token && token !== "undefined" && token !== "") {
                     root._musixmatchToken = token;
-                    pluginService.savePluginData("musicLyrics", "musixmatchToken", token)
+                    pluginService.savePluginData("musicLyrics", "musixmatchToken", token);
                     console.info("[MusicLyrics] Musixmatch: token acquired");
                     callback(token);
                 } else {
@@ -673,13 +747,7 @@ PluginComponent {
             if (expectedTitle !== root._lastFetchedTrack || expectedArtist !== root._lastFetchedArtist)
                 return;
 
-            var trackUrl = "https://apic-desktop.musixmatch.com/ws/1.1/matcher.track.get"
-                + "?q_track=" + encodeURIComponent(expectedTitle)
-                + "&q_artist=" + encodeURIComponent(expectedArtist)
-                + "&page_size=1&page=1"
-                + "&app_id=web-desktop-app-v1.0"
-                + "&usertoken=" + encodeURIComponent(token)
-                + "&t=" + Date.now();
+            var trackUrl = "https://apic-desktop.musixmatch.com/ws/1.1/matcher.track.get" + "?q_track=" + encodeURIComponent(expectedTitle) + "&q_artist=" + encodeURIComponent(expectedArtist) + "&page_size=1&page=1" + "&app_id=web-desktop-app-v1.0" + "&usertoken=" + encodeURIComponent(token) + "&t=" + Date.now();
 
             root._cancelActiveFetch = root._xhrGet(trackUrl, 15000, function (responseText, httpStatus) {
                 try {
@@ -729,12 +797,7 @@ PluginComponent {
     }
 
     function _fetchMusixmatchLyrics(trackId, token, expectedTitle, expectedArtist, _tokenRetried) {
-        var url = "https://apic-desktop.musixmatch.com/ws/1.1/track.subtitle.get"
-            + "?track_id=" + trackId
-            + "&subtitle_format=lrc"
-            + "&app_id=web-desktop-app-v1.0"
-            + "&usertoken=" + encodeURIComponent(token)
-            + "&t=" + Date.now();
+        var url = "https://apic-desktop.musixmatch.com/ws/1.1/track.subtitle.get" + "?track_id=" + trackId + "&subtitle_format=lrc" + "&app_id=web-desktop-app-v1.0" + "&usertoken=" + encodeURIComponent(token) + "&t=" + Date.now();
 
         root._cancelActiveFetch = _xhrGet(url, 15000, function (responseText, httpStatus) {
             // Guard: track may have changed
@@ -773,6 +836,7 @@ PluginComponent {
                 root.lyricsLines = lines;
                 root.musixmatchStatus = status.found;
                 root.lrclibStatus = status.skippedFound;
+                root.lrcapiStatus = status.skippedFound;
                 root.lyricStatus = lyricState.synced;
                 root.lyricSource = lyricSrc.musixmatch;
                 console.info("[MusicLyrics] ✓ Musixmatch: synced lyrics found (" + lines.length + " lines) for \"" + expectedTitle + "\"");
@@ -997,7 +1061,8 @@ PluginComponent {
     // -------------------------------------------------------------------------
 
     function _formatDuration(seconds) {
-        if (seconds <= 0) return "—";
+        if (seconds <= 0)
+            return "—";
         var m = Math.floor(seconds / 60);
         var s = Math.floor(seconds % 60);
         return m + ":" + ("0" + s).slice(-2);
@@ -1021,14 +1086,13 @@ PluginComponent {
                         width: parent.width
                         height: nowPlayingContent.implicitHeight + Theme.spacingM * 2
                         radius: Theme.cornerRadius
-                        color: root.activePlayer
-                              ? Theme.withAlpha(Theme.primary, 0.08)
-                              : Theme.withAlpha(Theme.surfaceContainerHighest, 0.5)
+                        color: root.activePlayer ? Theme.withAlpha(Theme.primary, 0.08) : Theme.withAlpha(Theme.surfaceContainerHighest, 0.5)
 
                         Row {
                             id: nowPlayingContent
                             anchors {
-                                left: parent.left; right: parent.right
+                                left: parent.left
+                                right: parent.right
                                 top: parent.top
                                 margins: Theme.spacingM
                             }
@@ -1036,9 +1100,7 @@ PluginComponent {
 
                             // Track info column (takes remaining space)
                             Column {
-                                width: _coverArt.visible
-                                       ? parent.width - _coverArt.width - parent.spacing
-                                       : parent.width
+                                width: _coverArt.visible ? parent.width - _coverArt.width - parent.spacing : parent.width
                                 spacing: Theme.spacingS
 
                                 // Header row: icon + "Now Playing"
@@ -1047,8 +1109,7 @@ PluginComponent {
                                     width: parent.width
 
                                     DankIcon {
-                                        name: root.activePlayer && root.activePlayer.playbackState === MprisPlaybackState.Playing
-                                              ? "play_circle" : "pause_circle"
+                                        name: root.activePlayer && root.activePlayer.playbackState === MprisPlaybackState.Playing ? "play_circle" : "pause_circle"
                                         size: 20
                                         color: root.activePlayer ? Theme.primary : Theme.surfaceVariantText
                                         anchors.verticalCenter: parent.verticalCenter
@@ -1171,7 +1232,10 @@ PluginComponent {
                                             color: Theme.surfaceVariantText
                                         }
 
-                                        Item { width: parent.width - _currentTime.implicitWidth - _endTime.implicitWidth; height: 1 }
+                                        Item {
+                                            width: parent.width - _currentTime.implicitWidth - _endTime.implicitWidth
+                                            height: 1
+                                        }
 
                                         StyledText {
                                             id: _endTime
@@ -1240,6 +1304,13 @@ PluginComponent {
 
                         SourceCard {
                             width: parent.width
+                            icon: "Genres"
+                            label: "lrcapi"
+                            sourceStatus: root.lrcapiStatus
+                        }
+
+                        SourceCard {
+                            width: parent.width
                             icon: "library_music"
                             label: "lrclib"
                             sourceStatus: root.lrclibStatus
@@ -1262,16 +1333,16 @@ PluginComponent {
 
         height: 44
         radius: Theme.cornerRadius
-        color: sourceStatus === 0
-               ? Theme.withAlpha(Theme.surfaceContainerHighest, 0.3)
-               : Theme.withAlpha(root.chipColor(sourceStatus), 0.06)
+        color: sourceStatus === 0 ? Theme.withAlpha(Theme.surfaceContainerHighest, 0.3) : Theme.withAlpha(root.chipColor(sourceStatus), 0.06)
         visible: true
 
         Row {
             anchors {
-                left: parent.left; right: parent.right
+                left: parent.left
+                right: parent.right
                 verticalCenter: parent.verticalCenter
-                leftMargin: Theme.spacingM; rightMargin: Theme.spacingM
+                leftMargin: Theme.spacingM
+                rightMargin: Theme.spacingM
             }
             spacing: Theme.spacingS
 
@@ -1280,18 +1351,14 @@ PluginComponent {
                 width: 28
                 height: 28
                 radius: 14
-                color: sourceCard.sourceStatus === 0
-                       ? Theme.withAlpha(Theme.surfaceContainerHighest, 0.5)
-                       : Theme.withAlpha(root.chipColor(sourceCard.sourceStatus), 0.15)
+                color: sourceCard.sourceStatus === 0 ? Theme.withAlpha(Theme.surfaceContainerHighest, 0.5) : Theme.withAlpha(root.chipColor(sourceCard.sourceStatus), 0.15)
                 anchors.verticalCenter: parent.verticalCenter
 
                 DankIcon {
                     anchors.centerIn: parent
                     name: sourceCard.icon
                     size: 14
-                    color: sourceCard.sourceStatus === 0
-                           ? Theme.surfaceVariantText
-                           : root.chipColor(sourceCard.sourceStatus)
+                    color: sourceCard.sourceStatus === 0 ? Theme.surfaceVariantText : root.chipColor(sourceCard.sourceStatus)
                 }
             }
 

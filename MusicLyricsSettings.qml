@@ -94,4 +94,33 @@ PluginSettings {
             }
         }
     }
+
+    StyledRect {
+        width: parent.width
+        height: whitelistClumn.implicitHeight + Theme.spacingL * 2
+        radius: Theme.cornerRadius
+        color: Theme.surfaceContainerHigh
+        Column {
+            id: whitelistClumn
+            anchors.fill: parent
+            anchors.margins: Theme.spacingL
+            spacing: Theme.spacingM
+
+            StyledText {
+                text: "Player Whitelist"
+                font.pixelSize: Theme.fontSizeMedium
+                font.weight: Font.Medium
+                color: Theme.surfaceText
+            }
+
+            StringSetting {
+                settingKey: "playerWhitelist"
+                label: "Allowed Players"
+                description: "Only players in this list will be allowed to control the music player."
+                placeholder: "lx-music-desktop, spotify"
+                defaultValue: ""
+            }
+        }
+
+    }
 }
