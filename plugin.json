@@ -2,7 +2,7 @@
   "id": "musicLyrics",
   "name": "Music Lyrics",
   "description": "Display synced music lyrics from multiple sources",
-  "version": "1.4.0",
+  "version": "1.5.0",
   "author": "gasiyu",
   "icon": "lyrics",
   "type": "widget",
